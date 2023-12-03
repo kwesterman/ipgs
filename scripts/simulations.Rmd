@@ -1,0 +1,200 @@
+---
+output: html_document
+title: "Concept and simulations for iPGS proof-of-concept study"
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, 
+                      dpi = 150, fig.path = "../output/simulations/")
+suppressMessages(silent <- lapply(
+  c("knitr", "kableExtra", "tidyverse", "patchwork"), 
+  library, character.only = TRUE))
+theme_set(theme_bw())
+```
+
+# iPGS concept
+
+```{r ipgs-concept}
+set.seed(1)
+n_sim <- 10000
+concept_sim_df <- tibble(
+  e = rnorm(n_sim, 3, 1),
+  g = rbinom(n_sim, 2, 0.5),
+  ipgs = rnorm(n_sim, 3, 1),
+  y_g = rnorm(n_sim, 0.5 * e + g * e, 1),
+  y_ipgs = rnorm(n_sim, 0.5 * e + ipgs * e, 1),
+)
+
+g_by_e_plt <- concept_sim_df %>%
+  mutate(g = factor(g, labels = c("AA", "AB", "BB"))) %>%
+  ggplot(aes(x = e, y = y_g, group = g, color = g)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = "y ~ x", fullrange = TRUE) +
+  scale_color_brewer(palette = "Dark2", name = "Genotype") +
+  labs(x = "Exposure", y = "Phenotype") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.8), 
+        legend.background = element_rect(size = 0.2, color = "black"))
+
+ipgs_by_e_plt <- concept_sim_df %>%
+  mutate(ipgs = pmin(pmax(ipgs, 1), 5)) %>%
+  ggplot(aes(x = e, y = y_ipgs, color = ipgs)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(data = filter(concept_sim_df, ipgs < 2),
+              method = "lm", formula = "y ~ x", se = FALSE, color = "#132B43") +
+  geom_smooth(data = filter(concept_sim_df, ipgs > 4),
+              method = "lm", formula = "y ~ x", se = FALSE, color = "#56B1F7") +
+  scale_color_gradient(
+    name = "Polygenic\ninteraction\nscore",
+    limits = c(1, 5),
+    breaks = c(1.5, 4.5),
+    labels = c("low", "high")
+  ) +
+  labs(x = "Exposure", y = "Phenotype") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.75), 
+        legend.background = element_rect(size = 0.2, color = "black"))
+
+g_by_e_plt + ipgs_by_e_plt
+```
+
+# Simulations
+
+```{r setup-sims}
+scenario_df <- expand_grid(
+  e = c(0, 1),
+  g = c(0, 0.5, 1),
+  gxe = seq(0, 1, 0.2),
+  prob_nonzero = 0.1
+) %>%
+  mutate(tag = paste0("e", e, "_g", g, "_gxe", gxe))
+
+scenario_df %>%
+  write_csv("../data/processed/simulations/scenarios.csv")
+scenario_df %>%
+  pull(tag) %>%
+  write("../data/processed/simulations/scenario_tags.txt")
+```
+
+```{r run-sims}
+source("simulations/prepare_genotypes.R")
+source("simulations/simulate_phenotypes.R")
+source("simulations/test_associations.R")
+source("simulations/get_pgs_weights.R")
+source("simulations/calculate_pgs.R")
+source("simulations/test_pgs.R")
+```
+
+```{r}
+calc_summaries <- function(tag) {
+  res_fn <- paste0("../data/processed/simulations/", tag, "/test_res.csv")
+  read_csv(res_fn) %>%
+    group_by(pgs_type) %>%
+    summarise(n_sig = sum(p.value < 0.05),
+              prop_sig = n_sig / n(),
+              mean_effect = mean(estimate),
+              .groups = "drop")
+}
+
+scenario_df <- read_csv("../data/processed/simulations/scenarios.csv") %>%
+  rowwise() %>%
+  mutate(summ = list(calc_summaries(tag))) %>%
+  unnest(summ)
+
+scenario_df %>%
+  filter(e == 1) %>%
+  ggplot(aes(x = gxe, y = prop_sig)) +
+  geom_point() +
+  facet_wrap(vars(pgs_type, g))
+```
+
+
+# Archive
+
+```{r first-sim-pipeline, eval=F}
+set.seed(1)
+n <- 10000  # Number of samples
+m <- 100  # Number of genotypes
+beta_gxe_prob_nonzero <- 0.5  # Probability of non-zero genotype effect
+
+# Generate genotype matrix
+
+generate_g_mat <- function(m, min_maf = 0.01, max_maf = 0.5) {
+  mafs <- runif(m, min_maf, max_maf)
+  sapply(mafs, function(maf) {
+    rbinom(n, 2, maf)
+  }, simplify = TRUE)
+}
+
+g_mat <- generate_g_mat(m)
+
+# Generate genotype effect vector
+
+true_beta_gxe_vec <- ifelse(runif(m) < beta_gxe_prob_nonzero, rnorm(m, 0, 1), 0)
+
+# Simulate exposure and outcome
+
+sim_df <- tibble(
+  id = seq(1, n),
+  e = rnorm(n, 0, 1),
+  y = rnorm(n, (g_mat * sim_df$e) %*% true_beta_gxe_vec, 1)
+)
+
+# Split dataset
+
+split_dataset <- function(n_total, train_prop) {
+  train_idx <- sample(seq(1, n_total), round(n_total * train_prop), replace = FALSE)
+  train_idx
+}
+
+train_idx <- split_dataset(n, 0.7)
+test_idx <- setdiff(seq(1, n), train_idx)
+
+# Estimate interaction betas for all genotypes
+
+test_g_by_e <- function(g, e, y, df, covars = NULL) {
+  regression_df <- df %>%
+    rename(g = {{ g }}, e = {{ e }}, y = {{ y }})
+  lm_form_str <- "y ~ g * e"
+  if (!is.null(covars)) {
+    lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
+  }
+  lm(as.formula(lm_form_str), data = regression_df) %>%
+    broom::tidy() %>%
+    filter(term == "g:e")
+}
+
+gwis_res_df <- map_dfr(seq(1, m), function(g_idx) {
+  sim_df$g <- g_mat[, g_idx]
+  test_g_by_e("g", "e", "y", sim_df[train_idx, ])
+})
+
+# Calculate iPGS
+
+calculate_pgs <- function(g_mat, beta_vec) {
+  g_mat %*% beta_vec
+}
+
+sim_df$ipgs <- calculate_pgs(g_mat, gwis_res_df$estimate)
+
+# Test PGS
+
+test_pgs_by_e <- function(ipgs, e, y, df, covars = NULL) {
+  regression_df <- df %>%
+    rename(ipgs = {{ ipgs }}, e = {{ e }}, y = {{ y }})
+  lm_form_str <- "y ~ ipgs * e"
+  if (!is.null(covars)) {
+    lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
+  }
+  lm(as.formula(lm_form_str), data = df) %>%
+    broom::tidy() %>%
+    filter(term == "ipgs:e")
+}
+
+test_pgs_by_e("ipgs", "e", "y", sim_df[test_idx, ])
+```
+

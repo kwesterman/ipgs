@@ -1,0 +1,236 @@
+---
+output: html_document
+title: "UKB results for iPRS proof-of-concept study"
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = F, message = F,warning = F, 
+                      dpi = 150, fig.path = "../output/ukb_results/")
+suppressMessages(silent <- lapply(
+  c("knitr", "kableExtra", "tidyverse", "patchwork"), 
+  library, character.only = TRUE))
+theme_set(theme_bw())
+```
+
+```{r load-data}
+ukb_subset_names <- c("training", "validation", "testing")
+ukb_subsets <- map(set_names(ukb_subset_names), function(set) {
+  read_csv(paste0("../data/processed/ukb_", set, "_set.csv"))
+})
+```
+
+# Project summary
+
+```{r workflow-diagram}
+knitr::include_graphics("../doc/workflow_diagram.pdf")
+```
+
+Overall dataset consists of European-ancestry individuals from the UKBB (based on Pan-UKBB; N ~ 320,000).
+
+* 50% training set: GWAS/GWIS
+* 25% validation set: PRS parameter optimization
+* 25% testing set: evaluation
+
+Primary metric for evaluation (validation & testing): significance of regression PRSxE term
+
+# Data distributions
+
+Plots reflect the testing set.
+
+```{r histograms}
+plot_histogram <- function(f) {
+  ukb_subsets$testing %>%
+    select(x = {{ f }}) %>%
+    filter(!is.na(x)) %>%
+    ggplot(aes(x = x)) +
+    geom_histogram(stat = "bin") +
+    labs(x = f)
+}
+
+hscrp_hist <- plot_histogram("hscrp_log")
+hba1c_hist <- plot_histogram("hba1c")
+
+hscrp_hist + hba1c_hist
+```
+
+# PRS performance
+
+```{r configuration}
+exposures <- "whr"
+exposures_clean <- "WHR"
+
+outcomes <- c("hscrp_log", "hba1c")
+outcomes_clean <- c("log(hsCRP)", "HbA1c")
+
+threshold_vec <- c("0.05", "0.01", "0.00001", "0.00000005")
+prs_names <- paste0("thresh", threshold_vec)
+prs_names_clean <- c("P<0.05", "P<0.01", "P<1e-5", "P<5e-8")
+
+types <- c("gxe", "prod", "main")
+types_clean <- c("GxE", "GxE product", "Main effect")
+
+prs_config_df <- expand_grid(
+  e = exposures,
+  y = outcomes,
+  type = types
+) %>%
+  mutate(tag = case_when(
+    type == "gxe" ~ paste0(e, "_", y),
+    type == "prod" ~ paste0(e, "_", y, "_prod"),
+    type == "main" ~ paste0(e, "_", y, "_main"),
+  ))
+```
+
+```{r stacking}
+get_stack_weights <- function(e, y, tag, prs_names, pheno_df) {
+  prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv"))
+  df <- pheno_df %>%
+    inner_join(prs_df, by = "id") %>%
+    filter(!is.na(!! sym(e)), !is.na(!! sym(y)))
+  me_lm_str <- paste0(y, " ~ ", e, " + ", paste(prs_names, collapse = " + "))
+  me_lm_fit <- lm(as.formula(me_lm_str), data = df, na.action = na.exclude)
+  me_lm_resids <- resid(me_lm_fit)
+  scaled_prs_mat <- df %>%
+    select(all_of(prs_names)) %>%
+    mutate(across(everything(), ~ ifelse(all(.x == 0), 0, scale(.x)))) %>%
+    as.matrix()
+  gxe_mat <- scaled_prs_mat * df[[e]]  # Column-wise multiplication
+  gxe_fit_cv <- glmnet::cv.glmnet(gxe_mat, me_lm_resids,
+                                  alpha = 0, lower.limits = 0, nfolds = 5)
+  weights <- coef(gxe_fit_cv, s = "lambda.min")[prs_names, ]
+  weights_norm <- weights / sum(weights)
+  weights_norm
+}
+
+calc_stacked_prs <- function(df, weights) {
+  scaled_prs_mat <- df %>%
+    select(all_of(names(weights))) %>%
+    mutate(across(everything(), scale)) %>%
+    as.matrix()
+  stacked_prs <- scaled_prs_mat %*% weights
+  stacked_prs
+}
+
+stack_weights_df <- prs_config_df %>%
+  rowwise() %>%
+  mutate(stack_weights = list(get_stack_weights(e, y, tag, prs_names, ukb_subsets$validation))) %>%
+  ungroup()
+```
+
+```{r prs-testing-prep}
+# get_prs <- function(e, y, prs_names, tag) {
+#   prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv")) %>%
+#     select(id, all_of(prs_names))
+#   stack_weights <- get_stack_weights(e, y, tag, prs_names, ukb_subsets$validation)
+#   prs_df$stacked <- calc_stacked_prs(prs_df, stack_weights)
+#   prs_df
+# }
+test_prs_main <- function(y, tag, set, prs_name) {
+  prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv"))
+  if (prs_name == "stacked") {
+    stack_weights <- pull(filter(stack_weights_df, tag == .env$tag), stack_weights)[[1]]
+    prs_df$stacked <- calc_stacked_prs(prs_df, stack_weights)
+  }
+  prs_df <- select(prs_df, id, prs = {{prs_name}})
+  regression_df <- inner_join(ukb_subsets[[set]], prs_df, by = "id")
+  lm_form_str <- paste0(y, " ~ prs")
+  tryCatch({
+    lm_fit <- lm(as.formula(lm_form_str), data = regression_df)
+    lm_fit %>%
+      broom::tidy() %>%
+      filter(term == "prs")
+  }, error = function(e) tibble())
+}
+
+test_prs_gxe <- function(e, y, tag, set, prs_name) {
+  prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv"))
+  if (prs_name == "stacked") {
+    stack_weights <- pull(filter(stack_weights_df, tag == .env$tag), stack_weights)[[1]]
+    prs_df$stacked <- calc_stacked_prs(prs_df, stack_weights)
+  }
+  prs_df <- select(prs_df, id, prs = {{prs_name}})
+  regression_df <- inner_join(ukb_subsets[[set]], prs_df, by = "id")
+  lm_form_str <- paste0(y, " ~ prs * ", e)
+  tryCatch({
+    lm_fit <- lm(as.formula(lm_form_str), data = regression_df)
+    lm_fit %>%
+      broom::tidy() %>%
+      filter(term == paste0("prs:", e))
+  }, error = function(e) tibble())
+}
+```
+
+```{r prs-main-results}
+prs_test_main_res_df <- prs_config_df %>%
+  cross_join(expand_grid(set = names(ukb_subsets),
+                         prs_name = prs_names)) %>%
+  rowwise() %>%
+  mutate(lm_fit = list(test_prs_main(y, tag, set, prs_name))) %>%
+  ungroup() %>%
+  unnest(lm_fit)
+```
+
+```{r prs-results}
+prs_test_res_df <- prs_config_df %>%
+  cross_join(expand_grid(set = names(ukb_subsets),
+                         prs_name = c(prs_names, "stacked"))) %>%
+  rowwise() %>%
+  mutate(lm_fit = list(test_prs_gxe(e, y, tag, set, prs_name))) %>%
+  ungroup() %>%
+  unnest(lm_fit)
+
+# e <- "whr"
+# y <- "hba1c"
+# tag <- "whr_hba1c_prod"
+# pheno_df <- ukb_subsets$validation
+```
+
+```{r plot-prs-main-results, fig.asp=0.5}
+prs_test_main_res_df %>%
+  filter(set == "testing",
+         type == "main") %>%
+  mutate(y = factor(y, levels = outcomes, labels = outcomes_clean),
+         type = factor(type, levels = types, labels = types_clean),
+         prs_name = factor(prs_name, 
+                           levels = prs_names,
+                           labels = prs_names_clean)) %>%
+  ggplot(aes(x = prs_name, y = statistic)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(vars(type, y), ncol = 2, scale = "free_y") +
+  labs(x = "", y = "Interaction test z-statistic",
+       title = "Positive control: same pipeline for genetic main effects") +
+  theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
+```
+
+```{r plot-prs-results, fig.asp=1}
+prs_test_res_df %>%
+  filter(type == "gxe") %>%
+  mutate(e = factor(e, levels = exposures, labels = exposures_clean),
+         y = factor(y, levels = outcomes, labels = outcomes_clean),
+         set = factor(set, levels = names(ukb_subsets), 
+                      labels = paste0(str_to_title(names(ukb_subsets)), " set")),
+         prs_name = factor(prs_name, 
+                           levels = c(prs_names, "stacked"),
+                           labels = c(prs_names_clean, "Stacked"))) %>%
+  ggplot(aes(x = prs_name, y = statistic)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(vars(set, y), ncol = 2, scale = "free_y") +
+  labs(x = "", y = "Interaction test z-statistic",
+       title = "GxE testing results from the primary iPRS") +
+  theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
+
+prs_test_res_df %>%
+  filter(set == "testing") %>%
+  mutate(e = factor(e, levels = exposures, labels = exposures_clean),
+         y = factor(y, levels = outcomes, labels = outcomes_clean),
+         type = factor(type, levels = types, labels = types_clean),
+         prs_name = factor(prs_name, 
+                           levels = c(prs_names, "stacked"),
+                           labels = c(prs_names_clean, "Stacked"))) %>%
+  ggplot(aes(x = prs_name, y = statistic)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(vars(type, y), ncol = 2, scale = "free_y") +
+  labs(x = "", y = "Interaction test z-statistic",
+       title = "GxE testing results in the testing set only") +
+  theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
+```

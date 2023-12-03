@@ -1,0 +1,46 @@
+# Phenotyping
+qsub data_prep/prep_ukb_phenos.sh
+
+rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_phenos_raw.csv" ../data/processed/
+rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_phenos_unrelated.csv" ../data/processed/
+rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_phenos_panUKBB.csv" ../data/processed/
+rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_*_set.csv" ../data/processed/
+
+# GWIS
+for bm in hscrp_log hba1c; do qsub -t 1-22 gwis/run_gwis.sh whr $bm; done
+for bm in hscrp_log hba1c; do qsub -t 1-22 gwas/run_gwas.sh whr_${bm}_prod; done
+for bm in hscrp_log hba1c; do 
+	for chr in {1..22}; do 
+		rsync -avP ../data/processed/gwis/whr_${bm}_chr${chr} ../data/processed/gwas/whr_${bm}_main_chr${chr} 
+	done
+done
+
+for bm in hscrp_log hba1c; do qsub gwis/postprocess_gwis.sh whr $bm; done
+for bm in hscrp_log hba1c; do qsub gwas/postprocess_gwas.sh whr_${bm}_prod; done
+for bm in hscrp_log hba1c; do qsub gwas/postprocess_gwas.sh whr_${bm}_main; done
+
+#rsync -avP uger:"florez_ukb_projects/ukb-n3/data/processed/gwis/*_merged_*" ../data/processed/gwis/
+#rsync -ravP uger:"florez_ukb_projects/ukb-n3/data/processed/gwis/qq_plots" ../data/processed/gwis/
+
+# LDSC for whole-genome GxE estimates and genetic correlation
+qsub post_gwis/prep_ldsc.sh
+
+for bm in hscrp_log hba1c; do qsub post_gwis/run_ldsc.sh whr_${bm} whr_${bm}_prod; done
+
+rsync -avP uger:"florez_ukb_projects/ukb-n3/data/processed/ldsc/*.log" ../data/processed/ldsc/
+
+# Generate and calculate PRS
+for bm in hscrp_log hba1c; do qsub prs/clump.sh whr_${bm} robust_P_int; done
+for bm in hscrp_log hba1c; do qsub prs/clump.sh whr_${bm}_prod robust_P_marg; done
+for bm in hscrp_log hba1c; do qsub prs/clump.sh whr_${bm}_main robust_P_marg; done
+
+for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}; done
+for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_prod; done
+for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_main; done
+
+for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}; done
+for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_prod; done
+for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_main; done
+
+rsync -avP uger:"florez_ukb_projects/iprs/data/processed/prs/*all_prs.csv" ../data/processed/prs/
+
