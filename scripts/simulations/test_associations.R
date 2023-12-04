@@ -41,13 +41,6 @@ test_all_variants <- function(g_mat, y_name, regression_func) {
     bind_rows(.id = "g")
 }
 
-# walk(all_phenos, function(y_name) {
-#   print(paste0(y_name, "..."))
-#   sumstats_df <- test_all_variants(g_mat, y_name)
-#   sumstats_df %>%
-#     write_csv(paste0(target_dir, "/gwis_res_", y_name, ".csv"))
-# })
-
 tags <- scan("../data/processed/simulations/scenario_tags.txt", what = character())
 
 for (tag in tags) {

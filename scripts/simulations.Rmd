@@ -67,29 +67,37 @@ g_by_e_plt + ipgs_by_e_plt
 ```{r setup-sims}
 scenario_df <- expand_grid(
   e = c(0, 1),
-  g = c(0, 0.5, 1),
+  g = c(0, 1),
   gxe = seq(0, 1, 0.2),
-  prob_nonzero = 0.1
+  prob_nonzero = 0.1,
+  n_sim = 200
 ) %>%
   mutate(tag = paste0("e", e, "_g", g, "_gxe", gxe))
 
 scenario_df %>%
   write_csv("../data/processed/simulations/scenarios.csv")
-scenario_df %>%
-  pull(tag) %>%
-  write("../data/processed/simulations/scenario_tags.txt")
+tags <- scenario_df$tag
+write(tags, "../data/processed/simulations/scenario_tags.txt")
 ```
 
 ```{r run-sims}
-source("simulations/prepare_genotypes.R")
-source("simulations/simulate_phenotypes.R")
-source("simulations/test_associations.R")
-source("simulations/get_pgs_weights.R")
-source("simulations/calculate_pgs.R")
-source("simulations/test_pgs.R")
+source("simulations/simulation_funcs.R")
+
+simulate_genotypes(N = 10000, M = 100, min_maf = 0.01, max_maf = 0.05)
+g_mat <- readRDS("../data/processed/simulations/g_mat.rds")
+
+simulate_phenotypes(scenario_df, g_mat, train_prop = 0.7)
+
+for (tag in tags) test_associations(tag, g_mat, n_cores = 6)
+
+for (tag in tags) get_pgs_weights(tag)
+
+for (tag in tags) calculate_pgs(tag, g_mat)
+
+for (tag in tags) test_pgs(tag, g_mat)
 ```
 
-```{r}
+```{r summarize-sims}
 calc_summaries <- function(tag) {
   res_fn <- paste0("../data/processed/simulations/", tag, "/test_res.csv")
   read_csv(res_fn) %>%
@@ -100,12 +108,12 @@ calc_summaries <- function(tag) {
               .groups = "drop")
 }
 
-scenario_df <- read_csv("../data/processed/simulations/scenarios.csv") %>%
+scenario_res_df <- read_csv("../data/processed/simulations/scenarios.csv") %>%
   rowwise() %>%
   mutate(summ = list(calc_summaries(tag))) %>%
   unnest(summ)
 
-scenario_df %>%
+scenario_res_df %>%
   filter(e == 1) %>%
   ggplot(aes(x = gxe, y = prop_sig)) +
   geom_point() +
