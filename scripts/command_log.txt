@@ -1,10 +1,17 @@
+# Simulations
+rsync -avP ../data/processed/simulations/*scenario* uger:florez_ukb_projects/ipgs/data/processed/simulations/
+
+qsub simulations/run_sims.sh
+
+rsync -amvP --include="*test_res.csv" --include="*/" --exclude="*" uger:florez_ukb_projects/ipgs/data/processed/simulations/ ../data/processed/simulations/
+
 # Phenotyping
 qsub data_prep/prep_ukb_phenos.sh
 
-rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_phenos_raw.csv" ../data/processed/
-rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_phenos_unrelated.csv" ../data/processed/
-rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_phenos_panUKBB.csv" ../data/processed/
-rsync -avP uger:"florez_ukb_projects/iprs/data/processed/ukb_*_set.csv" ../data/processed/
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_phenos_raw.csv" ../data/processed/
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_phenos_unrelated.csv" ../data/processed/
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_phenos_panUKBB.csv" ../data/processed/
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_*_set.csv" ../data/processed/
 
 # GWIS
 for bm in hscrp_log hba1c; do qsub -t 1-22 gwis/run_gwis.sh whr $bm; done
@@ -42,5 +49,5 @@ for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}; done
 for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_prod; done
 for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_main; done
 
-rsync -avP uger:"florez_ukb_projects/iprs/data/processed/prs/*all_prs.csv" ../data/processed/prs/
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/prs/*all_prs.csv" ../data/processed/prs/
 

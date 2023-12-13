@@ -1,6 +1,6 @@
 ---
 output: html_document
-title: "Concept and simulations for iPGS proof-of-concept study"
+title: "Simulations for iPGS proof-of-concept study"
 ---
 
 ```{r setup, include=F}
@@ -12,75 +12,129 @@ suppressMessages(silent <- lapply(
 theme_set(theme_bw())
 ```
 
-# iPGS concept
+# Simulation setup
 
-```{r ipgs-concept}
-set.seed(1)
-n_sim <- 10000
-concept_sim_df <- tibble(
-  e = rnorm(n_sim, 3, 1),
-  g = rbinom(n_sim, 2, 0.5),
-  ipgs = rnorm(n_sim, 3, 1),
-  y_g = rnorm(n_sim, 0.5 * e + g * e, 1),
-  y_ipgs = rnorm(n_sim, 0.5 * e + ipgs * e, 1),
-)
+Initial simulations will proceed as follows:
 
-g_by_e_plt <- concept_sim_df %>%
-  mutate(g = factor(g, labels = c("AA", "AB", "BB"))) %>%
-  ggplot(aes(x = e, y = y_g, group = g, color = g)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method = "lm", formula = "y ~ x", fullrange = TRUE) +
-  scale_color_brewer(palette = "Dark2", name = "Genotype") +
-  labs(x = "Exposure", y = "Phenotype") +
-  coord_cartesian(xlim = c(0.5, 5.5)) +
-  theme(axis.ticks = element_blank(), axis.text = element_blank(),
-        panel.grid = element_blank(),
-        legend.position = c(0.15, 0.8), 
-        legend.background = element_rect(size = 0.2, color = "black"))
+1. Simulate a single set of genotypes (N = 10,000 individuals, M = 100 variants) with a given MAF spectrum:
+  * $MAF_m \sim uniform(0.01, 0.5)$
+  * $G_m \sim binomial(2, MAF_m)$ for each variant $m$
 
-ipgs_by_e_plt <- concept_sim_df %>%
-  mutate(ipgs = pmin(pmax(ipgs, 1), 5)) %>%
-  ggplot(aes(x = e, y = y_ipgs, color = ipgs)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(data = filter(concept_sim_df, ipgs < 2),
-              method = "lm", formula = "y ~ x", se = FALSE, color = "#132B43") +
-  geom_smooth(data = filter(concept_sim_df, ipgs > 4),
-              method = "lm", formula = "y ~ x", se = FALSE, color = "#56B1F7") +
-  scale_color_gradient(
-    name = "Polygenic\ninteraction\nscore",
-    limits = c(1, 5),
-    breaks = c(1.5, 4.5),
-    labels = c("low", "high")
-  ) +
-  labs(x = "Exposure", y = "Phenotype") +
-  coord_cartesian(xlim = c(0.5, 5.5)) +
-  theme(axis.ticks = element_blank(), axis.text = element_blank(),
-        panel.grid = element_blank(),
-        legend.position = c(0.15, 0.75), 
-        legend.background = element_rect(size = 0.2, color = "black"))
+Then, for each scenario (details below)...
 
-g_by_e_plt + ipgs_by_e_plt
-```
+2. Simulate one environment E and P phenotypes Y (1000 for type I error simulations, 200 for power simulations) with effect sizes based on overall specified variance explained:
+  * $E \sim N(0, 1)$
+  * $beta_E \sim sqrt(Var_{E,tot})$
+  * $beta_{G,m} \sim N(0, sqrt(Var_{G,tot} / M))$
+  * $beta_{GxE,m} \sim N(0, sqrt(Var_{GxE,tot} / M))$
+  * $Y_i = \beta_EE_i + \beta_G^T\mathbf{G_i} + \beta_{GxE}^TE_i\mathbf{G_i} + \epsilon_i$, where $\epsilon_i \sim N(0, sqrt(1 - Var_{E,tot} - Var_{G,tot} - Var_{GxE,tot}))$
 
-# Simulations
+Then, for each combination of scenario and phenotype...
+
+3. Test associations for each variant using interaction (genome-wide interaction study [GWIS]) and main effect (genome-wide association study [GWAS]) models:
+  * $Y_i \sim \beta_0 + \beta_EE_i + \beta_{G}G_i + \beta_{GxE}G_iE_i$, with $\beta_{GxE}$ being the effect of interest
+  * $Y_i \sim \beta_0 + \beta_{G}G_i$, with $\beta_{G}$ being the effect of interest
+4. Get PGS weights:
+  * For now, this will use a trivial strategy of simply pulling variant-specific effect sizes from the association tests without shrinkage.
+  * $\beta_{iPGS,m} = \beta_{GWIS,m}$
+  * $\beta_{PGS,m} = \beta_{GWAS,m}$
+5. Calculate PGS:
+  * $iPGS_i = \mathbf{G_i^T}\mathbf{\beta_{iPGS}}$
+  * $PGS_i = \mathbf{G_i^T}\mathbf{\beta_{PGS}}$
+6. Test PGS:
+  * $Y_i \sim \beta_0 + \beta_EE_i + \beta_{iPGS}iPGS_i + \beta_{iPGSxE}iPGS_iE_i$
+  * $Y_i \sim \beta_0 + \beta_EE_i + \beta_{PGS}PGS_i + \beta_{PGSxE}PGS_iE_i$
 
 ```{r setup-sims}
-scenario_df <- expand_grid(
-  e = c(0, 1),
-  g = c(0, 1),
-  gxe = seq(0, 1, 0.2),
-  prob_nonzero = 0.1,
+power_scenario_df <- expand_grid(
+  e_var_tot = c(0, 0.1),
+  g_var_tot = c(0, 0.1),
+  gxe_var_tot = seq(0, 0.2, 0.05),
+  prob_nonzero = 1,
   n_sim = 200
 ) %>%
-  mutate(tag = paste0("e", e, "_g", g, "_gxe", gxe))
+  mutate(tag = paste0("e", e_var_tot, "_g", g_var_tot, "_gxe", gxe_var_tot))
 
-scenario_df %>%
-  write_csv("../data/processed/simulations/scenarios.csv")
-tags <- scenario_df$tag
-write(tags, "../data/processed/simulations/scenario_tags.txt")
+power_scenario_df %>%
+  write_csv("../data/processed/simulations/power_scenarios.csv")
+write(power_scenario_df$tags, "../data/processed/simulations/power_scenario_tags.txt")
+
+t1e_scenario_df <- expand_grid(
+  e_var_tot = 0.1,
+  g_var_tot = c(0, 0.1),
+  gxe_var_tot = 0,
+  prob_nonzero = 1,
+  n_sim = 1000
+) %>%
+  mutate(tag = paste0("e", e_var_tot, "_g", g_var_tot, "_gxe", gxe_var_tot))
+
+t1e_scenario_df %>%
+  write_csv("../data/processed/simulations/t1e_scenarios.csv")
+write(t1e_scenario_df$tags, "../data/processed/simulations/t1e_scenario_tags.txt")
+
+
+# tags <- scenario_df$tag
 ```
 
-```{r run-sims}
+```{r summarize-sims}
+calc_summaries <- function(tag) {
+  res_fn <- paste0("../data/processed/simulations/", tag, "/test_res.csv")
+  read_csv(res_fn) %>%
+    group_by(pgs_type) %>%
+    summarise(n_sig = sum(p.value < 0.05),
+              prop_sig = n_sig / n(),
+              mean_effect = mean(estimate),
+              .groups = "drop")
+}
+
+t1e_scenario_res_df <- t1e_scenario_df %>%
+  rowwise() %>%
+  mutate(summ = list(calc_summaries(tag))) %>%
+  unnest(summ) %>%
+  mutate(pgs_type = factor(pgs_type, levels = c("ipgs", "pgs"), 
+                           labels = c("iPGS", "PGS")))
+
+power_scenario_res_df <- power_scenario_df %>%
+  rowwise() %>%
+  mutate(summ = list(calc_summaries(tag))) %>%
+  unnest(summ) %>%
+  mutate(pgs_type = factor(pgs_type, levels = c("ipgs", "pgs"), 
+                           labels = c("iPGS", "PGS")),
+         main_effects = gsub("_gxe.*", "", tag))
+```
+
+# Type I error
+
+```{r t1e-summary}
+t1e_scenario_res_df %>%
+  mutate(g_var_tot = factor(g_var_tot)) %>%
+  ggplot(aes(x = g_var_tot, y = prop_sig)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "gray") +
+  facet_wrap(vars(pgs_type), nrow = 1) +
+  coord_cartesian(ylim = c(0, NA)) +
+  labs(x = expression(Var["G,tot"]),
+       y = "False positive rate")
+```
+
+# Power
+
+```{r power-summary}
+power_scenario_res_df %>%
+  ggplot(aes(x = gxe_var_tot, y = prop_sig, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_line() + 
+  facet_wrap(vars(e_var_tot, g_var_tot), labeller = "label_both") +
+  scale_color_discrete(name = "PGS type") +
+  coord_cartesian(ylim = c(0, NA)) +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Statistical power")
+```
+
+# Archive
+
+```{r run-sims, eval=F}
 source("simulations/simulation_funcs.R")
 
 simulate_genotypes(N = 10000, M = 100, min_maf = 0.01, max_maf = 0.05)
@@ -96,32 +150,6 @@ for (tag in tags) calculate_pgs(tag, g_mat)
 
 for (tag in tags) test_pgs(tag, g_mat)
 ```
-
-```{r summarize-sims}
-calc_summaries <- function(tag) {
-  res_fn <- paste0("../data/processed/simulations/", tag, "/test_res.csv")
-  read_csv(res_fn) %>%
-    group_by(pgs_type) %>%
-    summarise(n_sig = sum(p.value < 0.05),
-              prop_sig = n_sig / n(),
-              mean_effect = mean(estimate),
-              .groups = "drop")
-}
-
-scenario_res_df <- read_csv("../data/processed/simulations/scenarios.csv") %>%
-  rowwise() %>%
-  mutate(summ = list(calc_summaries(tag))) %>%
-  unnest(summ)
-
-scenario_res_df %>%
-  filter(e == 1) %>%
-  ggplot(aes(x = gxe, y = prop_sig)) +
-  geom_point() +
-  facet_wrap(vars(pgs_type, g))
-```
-
-
-# Archive
 
 ```{r first-sim-pipeline, eval=F}
 set.seed(1)

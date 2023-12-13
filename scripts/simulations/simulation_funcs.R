@@ -16,23 +16,37 @@ simulate_genotypes <- function(N, M, min_maf, max_maf,
 }
 
 
-simulate_scenario <- function(beta_e, beta_g_var, beta_gxe_var, 
-                              beta_prob_nonzero, n_sim,
-                              sim_df, g_mat,
-                              tag) {
+simulate_scenario <- function(e_var_tot, g_var_tot, gxe_var_tot, 
+                              beta_prob_nonzero, 
+                              n_sim, tag,
+                              g_mat, train_prop) {
   print(paste0("Simulating ", tag, "..."))
   
   N <- nrow(g_mat)
   M <- ncol(g_mat)
   
+  sim_df <- tibble(
+    id = seq(1, N),
+    train = sample(c(0, 1), N, replace = TRUE, 
+                   prob = c(1 - train_prop, train_prop)),
+    e = rnorm(N, 0, 1)
+  )
+  
+  beta_e <- sqrt(e_var_tot)
+  
+  beta_g_var <- g_var_tot / M
   beta_g_vec <- rnorm(M, 0, sqrt(beta_g_var)) * (runif(M) < beta_prob_nonzero)
+  
+  beta_gxe_var <- gxe_var_tot / M
   beta_gxe_vec <- rnorm(M, 0, sqrt(beta_gxe_var)) * (runif(M) < beta_prob_nonzero)
+  
+  error_var <- 1 - e_var_tot - g_var_tot - gxe_var_tot
   
   y_df <- map(seq(1, n_sim), function(pheno_idx) {
     y_mean_vec <- sim_df$e * beta_e +
       g_mat %*% beta_g_vec +
       (g_mat * sim_df$e) %*% beta_gxe_vec
-    rnorm(N, y_mean_vec, 1)
+    rnorm(N, y_mean_vec, sqrt(error_var))
   }) %>%
     setNames(paste0("y", seq(1, n_sim))) %>%
     bind_cols()
@@ -51,19 +65,11 @@ simulate_phenotypes <- function(scenario_df,
   
   set.seed(seed)
   
-  N <- nrow(g_mat)
-  
-  sim_df <- tibble(
-    id = seq(1, N),
-    train = sample(c(0, 1), N, replace = TRUE, 
-                   prob = c(1 - train_prop, train_prop)),
-    e = rnorm(N, 0, 1)
-  )
-  
   scenario_df %>%
     rowwise() %>%
-    group_walk(~ simulate_scenario(.$e, .$g, .$gxe, .$prob_nonzero, .$n_sim, 
-                                   sim_df, g_mat, .$tag))
+    group_walk(~ simulate_scenario(.$e_var_tot, .$g_var_tot, .$gxe_var_tot, 
+                                   .$prob_nonzero, 
+                                   .$n_sim, .$tag, g_mat, train_prop))
 }
 
 
