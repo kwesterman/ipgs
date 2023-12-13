@@ -1,0 +1,89 @@
+---
+output: html_document
+title: "iPGS concept introduction"
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, 
+                      dpi = 150, fig.path = "../output/concept/")
+suppressMessages(silent <- lapply(
+  c("knitr", "kableExtra", "tidyverse", "patchwork"), 
+  library, character.only = TRUE))
+theme_set(theme_bw())
+```
+
+# Background
+
+Polygenic scores (PGS) predict disease risk or continuous traits by aggregating across many genetic main effects, typically identified through genome-wide association studies (GWAS). Risk prediction based on these scores is useful in many contexts, but one major limitation is that such predictive scores are not always actionable. For example, risk stratification may be helpful in prioritizing a subset of individuals for lifestyle change or more intensive therapy, but does not necessarily indicate how responsive an individual will be to a given treatment.
+
+Gene-environment interaction (GxE) tests have the potential to bridge this gap by directly quantifying genetic effects on the association between some trait (say, a behavioral trait or environmental exposure) and the outcome of interest. Conceptually, this reaches beyond simple risk prediction to predict how individuals might respond differently to a given intervention. However, small variant-specific effects limit the translational utility of even robustly identified GxEs. By combining interaction effects across multiple variants in the style of standard PGS (which typically use genetic main effects), we can increase the overall effect size, improving statistical power for GxE tests and maximizing potential clinical utility.
+
+A few studies have used this type of interaction-based polygenic score (iPGS) in a preliminary fashion (Huls 2017, Arnau-Soler 2019, Lin 2019, Werme 2021, Tang 2022). In a diet-related study in the WHI cohort, we extended these findings into an intervention trial context. Specifically, we showed that a gene-diet interaction-based genetic score, developed in an observational subset of the cohort, predicted LDL-cholesterol changes in separate subset undergoing a dietary fat reduction intervention (Westerman 2020). The current body of literature has introduced the iPGS approach but has primarily focused on its role in improving polygenic prediction rather than detection and translation of the interactions themselves. The concept needs substantial expansion through simulation of complex scenarios (e.g., genotype-environment correlation, skewed outcomes), replication across cohorts, and evaluation of clinical utility.
+
+# Objective
+
+We aim to provide a thorough introduction to the concept behind iPGS, evaluate its statistical performance through simulations, and illustrate its value in quantifying genetic effects on the relationship between adiposity and inflammatory biomarkers across multiple large-scale biobank datasets.
+
+# Metrics for evaluation
+
+**Conceptual note:** GxEs can be motivated in one of two statistically equivalent ways, with the primary effect of interest being genetic ("G-centric") or environmental ("E-centric"). The G-centric motivation is more common, and relates to the concepts of (1) understanding genetic architecture (how do genome-wide patterns of genetic effects differ based on the environmental context?) and (2) genetic prediction of the value (how much does incorporation of GxE enhance genetic prediction?). The E-centric motivation relates more closely to a precision medicine-based framing (how do genetic factors modify the individual-specific exposure-outcome relationship?). 
+
+In this study, we are primarily focused on the E-centric perspective, given its more direct applications to precision medicine. Thus, we will use outcome metrics that most directly quantify the genetic modification of the E-Y relationship. Given an arbitrary PGS, we can test its performance using the following regression model:
+
+$Y \sim \beta_0 + \beta_EE + \beta_{PGS}PGS + \beta_{PGSxE}PGS*E$
+
+Though units are arbitrary, we will assume that the PGS, E, and Y terms are standardized to mean zero and unit variance. For type I error and power calculations, we will use the significance of the $\beta_{PGSxE}$ term, evaluated at *p* < 0.05. To understand effect sizes and clinical utility, we will examine the effect estimate for the same interaction term in two ways. Raw $\beta_{PGSxE}$ quantifies the expected change in the E-Y association (in $SD_Y / SD_E$) per $SD_PGS$, indicating the absolute degree of effect modification. A normalized version ($\beta_{PGSxE} / \beta_E$) compares this magnitude to that of the environmental main effect (e.g., a 1-SD difference in PGS changes the E effect by 20%). This quantity indicates whether the genetic modification meaningfully alters the overall E effect (regardless of statistical significance).
+
+```{r ipgs-concept}
+set.seed(1)
+n_sim <- 10000
+concept_sim_df <- tibble(
+  e = rnorm(n_sim, 3, 1),
+  g = rbinom(n_sim, 2, 0.5),
+  ipgs = rnorm(n_sim, 3, 1),
+  y_g = rnorm(n_sim, 0.5 * e + g * e, 1),
+  y_ipgs = rnorm(n_sim, 0.5 * e + ipgs * e, 1),
+)
+
+g_by_e_plt <- concept_sim_df %>%
+  mutate(g = factor(g, labels = c("AA", "AB", "BB"))) %>%
+  ggplot(aes(x = e, y = y_g, group = g, color = g)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = "y ~ x", fullrange = TRUE) +
+  scale_color_brewer(palette = "Dark2", name = "Genotype") +
+  labs(x = "Exposure", y = "Phenotype") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.8), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+ipgs_by_e_plt <- concept_sim_df %>%
+  mutate(ipgs = pmin(pmax(ipgs, 1), 5)) %>%
+  ggplot(aes(x = e, y = y_ipgs, color = ipgs)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(data = filter(concept_sim_df, ipgs < 2),
+              method = "lm", formula = "y ~ x", se = FALSE, color = "#132B43") +
+  geom_smooth(data = filter(concept_sim_df, ipgs > 4),
+              method = "lm", formula = "y ~ x", se = FALSE, color = "#56B1F7") +
+  scale_color_gradient(
+    name = "Polygenic\ninteraction\nscore",
+    limits = c(1, 5),
+    breaks = c(1.5, 4.5),
+    labels = c("low", "high")
+  ) +
+  labs(x = "Exposure", y = "Phenotype") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.75), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+g_by_e_plt + ipgs_by_e_plt
+```
+
+# Alternative PGS approaches
+
+The primary iPGS approach described above treats the Y value as the outcome of interest, to be modeled with uncertainty as a function of E, G, and their interaction. Another approach is to recognize that ultimately we're seeking to use genetics to predict the latent correlation between E and Y for each individual and model that directly. Noting that the product of two centered variables is an estimate of their covariance, we can generate a new phenotype "$r_{ExY}$" that is the product of E and Y (after residualizing on all covariates). This type of strategy is less well-explored in the literature, but has the advantages of better leveraging longitudinal data (in estimating person-specific E-Y associations), straightforward use of PGS tools designed for main-effect GWAS, and clearer interpretation of the resulting genetic estimates.
+
+Other non-main effect approaches can be used to develop PGS that may participate more strongly in interactions. For example, even without using specific environments, one can aggregate over genetic effects on the variance of a continuous trait to develop a variance-PGS (vPGS) before using this score in GxE testing (Johnson 2022, Miao 2022?).
