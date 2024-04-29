@@ -81,6 +81,40 @@ ipgs_by_e_plt <- concept_sim_df %>%
 
 g_by_e_plt + ipgs_by_e_plt
 ```
+```{r additional-viz, eval=F}
+concept_sim_df %>%
+  ggplot(aes(x = ipgs, y = y_ipgs)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) +
+  labs(x = "iPGS", y = "Phenotype") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.75), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+concept_sim_df %>%
+  mutate(ipgs = pmin(pmax(ipgs, 1), 5)) %>%
+  ggplot(aes(x = e, y = y_ipgs, color = ipgs)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(data = filter(concept_sim_df, ipgs < 2),
+              method = "lm", formula = "y ~ x", se = FALSE, color = "#132B43") +
+  geom_smooth(data = filter(concept_sim_df, ipgs > 4),
+              method = "lm", formula = "y ~ x", se = FALSE, color = "#56B1F7") +
+  scale_color_gradient(
+    name = "Polygenic\ninteraction\nscore",
+    limits = c(1, 5),
+    breaks = c(1.5, 4.5),
+    labels = c("low", "high")
+  ) +
+  labs(x = "Exposure", y = "Phenotype") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.75), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+```
+
 
 # Alternative PGS approaches
 
