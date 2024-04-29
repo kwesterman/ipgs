@@ -12,4 +12,4 @@ tag=$1
 source /broad/software/scripts/useuse
 use R-4.1
 
-Rscript prs/collect_prs.R ${tag}
+Rscript pgs/collect_pgs.R ${tag}
