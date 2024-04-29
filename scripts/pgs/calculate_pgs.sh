@@ -46,16 +46,6 @@ ${plink2} \
 	--out ${pgs_dir}/${tag}_pgs_subset_chr${chr} \
 	--memory 5000
 
-##${plink2} \
-##        --bgen /broad/ukbb/imputed_v3/ukb_imp_chr${chr}_v3.bgen ref-first \
-##        --sample /humgen/florezlab/UKBB_app27892/ukb27892_imp_chrAUT_v3_s487395.sample \
-##        --extract ${pgs_dir}/${tag}_pgs_snps.txt \
-##	--rm-dup force-first \
-##        --make-pgen \
-##	--out ${pgs_dir}/${tag}_pgs_subset_chr${chr} \
-##        --memory 40000 \
-##	--threads 8
-
 # Calculate a series of P&T-based scores
 
 ${plink2} \

@@ -10,7 +10,6 @@
 
 
 tag=$1
-p_col=$2
 
 pgs_dir=../data/processed/pgs
 input_file=${pgs_dir}/${tag}_pgsInput
@@ -29,7 +28,7 @@ ${plink2} \
 	--clump-r2 0.1 \
 	--clump-kb 250 \
 	--clump-id-field SNP \
-	--clump-p-field ${p_col} \
+	--clump-p-field P \
 	--out ${pgs_dir}/${tag}
 
 # Generate a file specifying P&T thresholds
