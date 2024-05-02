@@ -51,3 +51,19 @@ for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_main; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/prs/*all_prs.csv" ../data/processed/prs/
 
+
+# Run vGWAS using QUAIL
+# download QUAIL from GitHub (NOTE: minor edit to Step2; see chef in vgwas scripts folder)
+git clone https://github.com/qlu-lab/QUAIL vgwas/QUAIL
+
+# prep plinkset; filter by maf & info>0.3; (stored in scratch)
+qsub -t 1-22 data_prep/prep_ukb_plinkset.sh 0.005
+qsub data_prep/postprocess_ukb_plinkset.sh
+
+# run vgwas with quail
+qsub vgwas/run_vgwas.sh 0.005 ../data/processed/phenos/ukb_phenos_unrelated.csv hscrp
+qsub vgwas/run_vgwas.sh 0.005 ../data/processed/phenos/ukb_phenos_unrelated.csv hscrp_log
+
+
+
+
