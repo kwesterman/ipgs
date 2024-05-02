@@ -12,6 +12,7 @@ scratch=/broad/hptmp/gervis
 
 # delete bgen files
 rm ${scratch}/chr*_sel_maf${MAF}.bgen
+rm ${scratch}/snplist_chr${CHR}_maf${MAF}.txt
 
 
 ##EOF
