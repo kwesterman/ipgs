@@ -64,6 +64,8 @@ qsub data_prep/postprocess_ukb_plinkset.sh
 qsub vgwas/run_vgwas.sh 0.005 ../data/processed/phenos/ukb_phenos_unrelated.csv hba1c
 qsub vgwas/run_vgwas.sh 0.005 ../data/processed/phenos/ukb_phenos_unrelated.csv hscrp_log
 
+qsub vgwas/postprocess_vgwas.sh hba1c
+qsub vgwas/postprocess_vgwas.sh hscrp_log
 
 
 
