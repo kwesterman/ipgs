@@ -82,10 +82,10 @@ if (dispersion){
 # Plinlk2 to run genome-wide vQTL analysis
 cat("\n### Use plink2 to run the Genome-wide vQTL analysis ###\n")
 if (!is.na(freq)){
-  job_vqtl <- paste0(plink_path, " --bfile ", genotype, " --rm-dup 'exclude-all' 'list' ", " --read-freq ", freq,  " --pheno ", pheno_rank_score , " --covar ", covariate, " --out ", output, "_QUAIL_vQTL --linear --covar-variance-standardize --vif 300 --no-psam-pheno --memory '6000' ")  
+  job_vqtl <- paste0(plink_path, " --bfile ", genotype, " --rm-dup 'exclude-all' 'list' ", " --read-freq ", freq,  " --pheno ", pheno_rank_score , " --covar ", covariate, " --out ", output, "_QUAIL_vQTL --linear --covar-variance-standardize --vif '300' ", " --no-psam-pheno ", " --memory '6000' ")
   system(job_vqtl)
 }else{
-  job_vqtl <- paste0(plink_path, " --bfile ", genotype, " --rm-dup 'exclude-all' 'list' ",  " --pheno ", pheno_rank_score , " --covar ", covariate, " --out ", output, "_QUAIL_vQTL --linear --covar-variance-standardize --vif 300 --no-psam-pheno --memory '6000' ")  
+  job_vqtl <- paste0(plink_path, " --bfile ", genotype, " --rm-dup 'exclude-all' 'list' ",  " --pheno ", pheno_rank_score , " --covar ", covariate, " --out ", output, "_QUAIL_vQTL --linear --covar-variance-standardize --vif '300' ", " --no-psam-pheno ", " --memory '6000' ")
   system(job_vqtl)
 }
 
