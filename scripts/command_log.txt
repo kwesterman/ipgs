@@ -14,7 +14,7 @@ rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_phenos_panUKBB.csv"
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_*_set.csv" ../data/processed/
 
 # Genome-wide single-variant analyses
-for bm in hscrp_log hba1c; do qsub -t 1-22 gwas/run_gwas.sh whr $bm; done
+for bm in hscrp_log hba1c; do qsub -t 1-22 gwas/run_gwas.sh $bm; done
 for exp in bmi whr; do
 	for bm in hscrp_log hba1c; do qsub -t 1-22 gwis/run_gwis.sh $exp $bm; done
 done
@@ -25,11 +25,33 @@ done
 ##		rsync -avP ../data/processed/gwis/whr_${bm}_chr${chr} ../data/processed/gwas/whr_${bm}_main_chr${chr} 
 ##	done
 ##done
-##for bm in hscrp_log hba1c; do qsub gwas/postprocess_gwas.sh whr_${bm}_prod; done
+
+for bm in hscrp_log hba1c; do qsub gwas/postprocess_gwas.sh ${bm}; done
+for exp in bmi whr; do
+	for bm in hscrp_log hba1c; do qsub gwis/postprocess_gwis.sh $exp $bm; done
+done
 
 # Generate and calculate PGS
-for bm in hscrp_log hba1c; do qsub pgs/clump.sh whr_${bm}; done
-for bm in hscrp_log hba1c; do qsub pgs/clump.sh whr_${bm}_main; done
+for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${bm}; done
+for exp in bmi whr; do
+	for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${exp}_${bm}; done
+done
+
+for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}; done
+for exp in bmi whr; do
+        for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${exp}_${bm}; done
+done
+
+
+for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${bm}; done
+for exp in bmi whr; do
+        for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${exp}_${bm}; done
+done
+
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*all_pgs.csv" ../data/processed/pgs/
+
+
+############################
 
 for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}; done
 for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_prod; done

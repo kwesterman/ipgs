@@ -51,6 +51,6 @@ ${plink2} \
 ${plink2} \
 	--pfile ${pgs_dir}/${tag}_pgs_subset_chr${chr} \
         --score ${input_file} 1 4 6 header ignore-dup-ids cols=scoresums\
-        --q-score-range ${pgs_dir}/${tag}_pt_range_list.txt ${input_file} 1 8 header \
+        --q-score-range ${pgs_dir}/${tag}_pt_range_list.txt ${input_file} 1 7 header \
 	--out ${pgs_dir}/${tag}_chr${chr} \
         --memory 5000
