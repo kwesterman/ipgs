@@ -7,7 +7,7 @@
 #$ -cwd
 
 
-pheno=$2
+pheno=$1
 
 source /broad/software/scripts/useuse
 use R-4.1
@@ -15,7 +15,7 @@ use R-4.1
 
 R --vanilla <<EOF
 library(tidyverse) ; library(data.table)
-do.call(rbind.data.frame, lapply(as.list(20:22), function(i) {fread(paste0("../data/vgwas/quail/ukb_chr", i, "_${pheno}_rank_score_QUAIL_vQTL.txt")) } )) %>% fwrite(paste0("../data/vgwas/ukb_", ${pheno}, "_QUAIL_vQTL.txt"))
+do.call(rbind.data.frame, lapply(as.list(1:22), function(i) {fread(paste0("../data/vgwas/quail/ukb_chr", i, "_${pheno}_rank_score_QUAIL_vQTL.txt")) } )) %>% fwrite(paste0("../data/vgwas/ukb_${pheno}_QUAIL_vQTL.txt"))
 EOF
 
 

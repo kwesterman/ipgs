@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#$ -l h_vmem=60G
-#$ -l h_rt=24:00:00
+#$ -l h_vmem=80G
+#$ -l h_rt=8:00:00
 #$ -o ../reports
 
 #$ -j y
@@ -16,6 +16,7 @@ pheno=$3
 opt=../opt
 
 mkdir -p ../reports
+
 
 source /broad/software/scripts/useuse
 use R-4.1

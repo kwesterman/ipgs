@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#$ -l h_vmem=70G
-#$ -l h_rt=12:00:00
+#$ -l h_vmem=80G
+#$ -l h_rt=8:00:00
 #$ -o ../reports
 
 
@@ -30,6 +30,7 @@ Rscript vgwas/QUAIL/Step2_QUAIL_vQTL_JEG.R \
 --pheno_rs ../data/vgwas/quail/ukb_${pheno}_rank_score.txt \
 --covar ../data/vgwas/quail/ukb_covars_quail.txt \
 --geno ${scratch}/plinkset/chr${CHR}_sel_maf${MAF} \
+--freq ${scratch}/plinkset/chr${CHR}_sel_maf${MAF}.afreq \
 --output ../data/vgwas/quail/ukb_chr${CHR}_${pheno}_rank_score \
 --plink_path ${opt}/plink2
 

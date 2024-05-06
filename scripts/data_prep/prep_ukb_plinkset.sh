@@ -32,6 +32,7 @@ awk -v CHR=$CHR -v MAF=$MAF '{ if ($6>MAF && $8>0.3 ) {print $2} }' ${ukb_bgen_d
 bgenix -g $ukb_bgen_dir/ukb_imp_chr${CHR}_v3.bgen -incl-rsids ${scratch}/snplist_chr${CHR}_maf${MAF}.txt > ${scratch}/chr${CHR}_sel_maf${MAF}.bgen
 
 
+
 # bgen to bed/bim/fam
 
 mkdir -p ${scratch}/plinkset
@@ -41,7 +42,9 @@ ${opt}/plink2 --bgen ${scratch}/chr${CHR}_sel_maf${MAF}.bgen ref-first \
 --make-bed \
 --memory 30000 \
 --rm-dup force-first \
+--freq \
 --out ${scratch}/plinkset/chr${CHR}_sel_maf${MAF}
+
 
 
 # delete bgen files
