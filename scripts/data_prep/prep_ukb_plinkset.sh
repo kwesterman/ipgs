@@ -40,14 +40,13 @@ mkdir -p ${scratch}/plinkset
 ${opt}/plink2 --bgen ${scratch}/chr${CHR}_sel_maf${MAF}.bgen ref-first \
 --sample ${ukb_sample_dir}/ukb27892_imp_chrAUT_v3_s487395.sample \
 --make-bed \
---memory 30000 \
+--memory 50000 \
 --rm-dup force-first \
---freq \
---out ${scratch}/plinkset/chr${CHR}_sel_maf${MAF}
+--out ${scratch}/plinkset/chr${CHR}_sel_maf${MAF} \
+&& rm ${scratch}/plinkset/chr${CHR}_sel_maf${MAF}.bgen \
+&& rm ${scratch}/snplist_chr${CHR}_maf${MAF}.txt
 
-
-
-# delete bgen files
-rm ${scratch}/chr${CHR}_sel_maf${MAF}.bgen
 
 #EOF
+
+
