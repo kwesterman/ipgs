@@ -73,7 +73,7 @@ ss_df %>%
   group_by(SNP) %>% 
   arrange(P_vgwas) %>%
   slice(1) %>% 
-  ungroup() %>% head()
+  ungroup() %>% 
   write_tsv(paste0(prs_dir, "/", y, "_prsInput"))
  
 
@@ -84,7 +84,7 @@ ss_df %>%
   group_by(SNP) %>%
   arrange(P) %>%
   slice(1) %>%
-  ungroup() %>% head()
+  ungroup() %>% 
   write_tsv(paste0(ldsc_dir, "/", y, "_ldscInput"))
 
 
