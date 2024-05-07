@@ -74,10 +74,10 @@ ss_df %>%
   arrange(P_vgwas) %>%
   slice(1) %>% 
   ungroup() %>% 
-  write_tsv(paste0(prs_dir, "/", y, "_prsInput"))
+  write_tsv(paste0(prs_dir, "/", y, "_vQTL_prsInput"))
  
 
-ldsc_dir <- paste0(vgwas_dir, "/../../ldsc")
+ldsc_dir <- paste0(vgwas_dir, "/../ldsc")
 system(paste0("mkdir -p ", ldsc_dir))
 ss_df %>%
   select(SNP, CHR, POS, EA, NEA, N, BETA, P=P_vgwas) %>% 
@@ -85,7 +85,7 @@ ss_df %>%
   arrange(P) %>%
   slice(1) %>%
   ungroup() %>% 
-  write_tsv(paste0(ldsc_dir, "/", y, "_ldscInput"))
+  write_tsv(paste0(ldsc_dir, "/", y, "_vQTL_ldscInput"))
 
 
 
