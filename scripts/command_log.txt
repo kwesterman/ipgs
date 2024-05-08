@@ -65,3 +65,7 @@ for bm in hba1c hscrp_log; do qsub vgwas/postprocess_vgwas.sh ${bm}; done
 
 
 
+
+
+
+
