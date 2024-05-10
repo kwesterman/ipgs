@@ -36,17 +36,27 @@ for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${bm}; done
 for exp in bmi whr; do
 	for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${exp}_${bm}; done
 done
+for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${bm}_vQTL; done
 
 for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}; done
 for exp in bmi whr; do
         for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${exp}_${bm}; done
 done
+for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}_vQTL; done
 
 
 for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${bm}; done
 for exp in bmi whr; do
         for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${exp}_${bm}; done
 done
+for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${bm}_vQTL; done
+
+
+for bm in hscrp_log hba1c; do qsub pgs/run_prsice.sh ${bm}; done
+for exp in bmi whr; do
+        for bm in hscrp_log hba1c; do qsub pgs/run_prsice.sh ${exp}_${bm}; done
+done
+for bm in hscrp_log hba1c; do qsub pgs/run_prsice.sh ${bm}_vQTL; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*all_pgs.csv" ../data/processed/pgs/
 

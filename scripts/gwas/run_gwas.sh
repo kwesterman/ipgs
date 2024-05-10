@@ -30,6 +30,8 @@ read_csv("../data/processed/ukb_training_set.csv") %>%
   select(where(~ !is.character(.x))) %>%
   write_csv("../data/processed/${pheno}_phenos_chr${chr}.tmp")
 EOF
+EOF
+
 
 singularity_dir=~/kw/singularity
 singularity exec \
