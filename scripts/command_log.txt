@@ -65,6 +65,7 @@ for bm in hba1c hscrp_log; do qsub vgwas/postprocess_vgwas.sh ${bm}; done
 
 
 
+for i in {1..22}; do cp vgwas/hscrp_log* $ipgs/data/processed/vgwas/ ; done
 
 
 
