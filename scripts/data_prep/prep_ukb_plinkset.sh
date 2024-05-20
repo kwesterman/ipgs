@@ -32,6 +32,16 @@ awk -v CHR=$CHR -v MAF=$MAF '{ if ($6>MAF && $8>0.3 ) {print $2} }' ${ukb_bgen_d
 bgenix -g $ukb_bgen_dir/ukb_imp_chr${CHR}_v3.bgen -incl-rsids ${scratch}/snplist_chr${CHR}_maf${MAF}.txt > ${scratch}/chr${CHR}_sel_maf${MAF}.bgen
 
 
+# list high quality variants only
+echo "" > ../data/processed/ukb_geno_1to22_maf${MAF}_info0.5.txt
+for chr in {1..22}; do
+	echo "Filtering chromosome ${chr}..."
+	awk -v chr=${chr} -v maf=${MAF} '$6 > maf && $8 > 0.5 {print chr"\t"$0}' ${ukb_bgen_dir}/ukb_mfi_chr${chr}_v3.txt >> ../data/processed/ukb_geno_1to22_maf${MAF}_info0.5.txt
+done
+
+
+
+ 
 
 # bgen to bed/bim/fam
 

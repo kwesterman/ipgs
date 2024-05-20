@@ -54,7 +54,7 @@ ss_cols <- c(
   EA = "A1", NEA = "A2",
   N = "N", P = "P", beta="BETA", SE="SE")
 
-high_qual_variants <- as.data.frame(read_tsv(paste0(vgwas_dir, "/", y, "_ukb_geno_1to22_maf", MAF, "_info0.5.txt"), col_names=F, col_types="c"))$X3
+high_qual_variants <- as.data.frame(read_tsv(paste0("../data/processed/ukb_geno_1to22_maf", MAF, "_info0.5.txt"), col_names=F, col_types="c"))$X3
 
 ss_df <- fread(filepath, stringsAsFactors=F, data.table=F) %>%
   select(all_of(ss_cols)) %>%
