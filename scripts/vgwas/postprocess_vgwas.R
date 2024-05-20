@@ -102,7 +102,7 @@ dev.off()
 
 
 ### Delete geno file
-system(paste0("rm ", vgwas_dir, "/", y, "_ukb_geno_1to22_maf", MAF, "_info0.5.txt"))
+system(paste0("rm ../data/processed/", y, "_ukb_geno_1to22_maf", MAF, "_info0.5.txt"))
 
 
 ##EOF

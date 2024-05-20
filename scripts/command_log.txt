@@ -52,7 +52,7 @@ for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_main; done
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/prs/*all_prs.csv" ../data/processed/prs/
 
 
-# Run vGWAS using QUAIL
+# Run vGWAS 
 # download QUAIL from GitHub (NOTE: minor edit to Step2; see chef in vgwas scripts folder)
 git clone https://github.com/qlu-lab/QUAIL vgwas/QUAIL
 
@@ -60,14 +60,12 @@ git clone https://github.com/qlu-lab/QUAIL vgwas/QUAIL
 qsub -t 1-22 data_prep/prep_ukb_plinkset.sh 0.005
 
 # run vgwas with quail
-for bm in hba1c hscrp_log; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv ${bm}; done
-for bm in hba1c hscrp_log; do qsub vgwas/postprocess_vgwas.sh ${bm}; done
+for bm in hba1c hscrp_log ldl_statinadj tg_log alt_log; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv ${bm}; done
+for bm in hba1c hscrp_log ldl_statinadj tg_log alt_log; do qsub vgwas/postprocess_vgwas.sh ${bm}; done
 
-for bm in ldl_statinadj tg_log alt_log; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv $bm ; done
-
-
-for i in {1..22}; do cp vgwas/hscrp_log* $ipgs/data/processed/vgwas/ ; done
-
-
-
+# rsync
+for bm in ldl_statinadj tg_log alt_log ; do cp ../data/processed/vgwas/${bm}_* $ipgs/data/processed/vgwas/ ; done  \
+for bm in ldl_statinadj tg_log alt_log ; do cp ../data/processed/ldsc/${bm}_vQTL_ldscInput $ipgs/data/processed/ldsc/ ; done
+for bm in ldl_statinadj tg_log alt_log ; do cp ../data/processed/pgs/${bm}_vQTL_pgsInput $ipgs/data/processed/pgs/ ; done
+done
 
