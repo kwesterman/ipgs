@@ -63,6 +63,7 @@ qsub -t 1-22 data_prep/prep_ukb_plinkset.sh 0.005
 for bm in hba1c hscrp_log; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv ${bm}; done
 for bm in hba1c hscrp_log; do qsub vgwas/postprocess_vgwas.sh ${bm}; done
 
+for bm in ldl_statinadj tg_log alt_log; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv $bm ; done
 
 
 for i in {1..22}; do cp vgwas/hscrp_log* $ipgs/data/processed/vgwas/ ; done
