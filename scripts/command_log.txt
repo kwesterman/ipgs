@@ -14,62 +14,86 @@ rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_phenos_panUKBB.csv"
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_*_set.csv" ../data/processed/
 
 # Genome-wide single-variant analyses
-for bm in hscrp_log hba1c; do qsub -t 1-22 gwas/run_gwas.sh $bm; done
-for exp in bmi whr; do
-	for bm in hscrp_log hba1c; do qsub -t 1-22 gwis/run_gwis.sh $exp $bm; done
-done
-#for bm in hscrp_log hba1c; do qsub -t 1-22 gwvs/run_gwvs.sh $bm; done
+first_bm_arr=("hscrp_log" "hba1c")
+five_bm_arr=("hscrp_log" "hba1c" "ldl_statinadj" "tg_log" "alt_log")
+ten_bm_arr=("hscrp_log" "hba1c" "ldl_statinadj" "tg_log" "alt_log" "ggt_log" "hdl" "alb" "lipA_log" "vitD")
+rest_bm_arr=("apoA"  "apoB_statinadj"  "ast_log"  "chol_statinadj"  "creatinine"  "cysC_log"  "bilirubin_dir_log" "glu"  "shbg"  "bilirubin_tot_log")
+bm_arr=("apoA"  "apoB_statinadj"  "ast_log"  "chol_statinadj"  "creatinine"  "cysC_log"  "bilirubin_dir_log" "glu"  "shbg"  "bilirubin_tot_log")
 
-##for bm in hscrp_log hba1c; do 
+for bm in ${bm_arr[@]}; do qsub -t 1-22 gwas/run_gwas.sh $bm; done
+for exp in bmi; do
+	for bm in ${bm_arr[@]}; do qsub -t 1-22 gwis/run_gwis.sh $exp $bm; done
+done
+#for bm in ${bm_arr[@]}; do qsub -t 1-22 gwvs/run_gwvs.sh $bm; done
+
+##for bm in ${bm_arr[@]}; do 
 ##	for chr in {1..22}; do 
 ##		rsync -avP ../data/processed/gwis/whr_${bm}_chr${chr} ../data/processed/gwas/whr_${bm}_main_chr${chr} 
 ##	done
 ##done
 
-for bm in hscrp_log hba1c; do qsub gwas/postprocess_gwas.sh ${bm}; done
-for exp in bmi whr; do
-	for bm in hscrp_log hba1c; do qsub gwis/postprocess_gwis.sh $exp $bm; done
+for bm in ${bm_arr[@]}; do qsub gwas/postprocess_gwas.sh ${bm}; done
+for exp in bmi; do
+	for bm in ${bm_arr[@]}; do qsub gwis/postprocess_gwis.sh $exp $bm; done
 done
 
 # Generate and calculate PGS
-for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${bm}; done
+
+for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${bm}; done
 for exp in bmi whr; do
-	for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${exp}_${bm}; done
+        for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${exp}_${bm}; done
 done
-for bm in hscrp_log hba1c; do qsub pgs/clump.sh ${bm}_vQTL; done
+for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${bm}_vQTL; done
 
-for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}; done
-for exp in bmi whr; do
-        for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${exp}_${bm}; done
-done
-for bm in hscrp_log hba1c; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}_vQTL; done
+for bm in ${bm_arr[@]}; do qsub prset/run_prset.sh ${bm}; done
 
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.all_score" ../data/processed/pgs/
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.snp" ../data/processed/pgs/
 
-for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${bm}; done
-for exp in bmi whr; do
-        for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${exp}_${bm}; done
-done
-for bm in hscrp_log hba1c; do qsub pgs/collect_pgs.sh ${bm}_vQTL; done
+# Export PGS definitions (from UKB postprocessing and to All of Us platform)
 
+rsync -avP ../data/processed/pgs/optimized_*_params.csv uger:"florez_ukb_projects/ipgs/data/processed/pgs/"
 
-for bm in hscrp_log hba1c; do qsub pgs/run_prsice.sh ${bm}; done
-for exp in bmi whr; do
-        for bm in hscrp_log hba1c; do qsub pgs/run_prsice.sh ${exp}_${bm}; done
-done
-for bm in hscrp_log hba1c; do qsub pgs/run_prsice.sh ${bm}_vQTL; done
+for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm} mpgs; done
+for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh bmi_${bm} ipgs; done
+for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm}_vQTL vpgs; done
+for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm}_prset ppgs; done
 
-rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*all_pgs.csv" ../data/processed/pgs/
-
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*_pgs_weights_hg38.txt" ../data/processed/pgs/
+gsutil cp ../data/processed/pgs/*_pgs_weights_hg38.txt gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/
 
 ############################
 
-for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}; done
-for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_prod; done
-for bm in hscrp_log hba1c; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_main; done
+## Old PGS generation
+##for bm in ${bm_arr[@]}; do qsub pgs/clump.sh ${bm}; done
+##for exp in bmi whr; do
+##	for bm in ${bm_arr[@]}; do qsub pgs/clump.sh ${exp}_${bm}; done
+##done
+##for bm in ${bm_arr[@]}; do qsub pgs/clump.sh ${bm}_vQTL; done
+##
+##for bm in ${bm_arr[@]}; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}; done
+##for exp in bmi whr; do
+##        for bm in ${bm_arr[@]}; do qsub -t 1-22 pgs/calculate_pgs.sh ${exp}_${bm}; done
+##done
+##for bm in ${bm_arr[@]}; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}_vQTL; done
+##
+##
+##for bm in ${bm_arr[@]}; do qsub pgs/collect_pgs.sh ${bm}; done
+##for exp in bmi whr; do
+##        for bm in ${bm_arr[@]}; do qsub pgs/collect_pgs.sh ${exp}_${bm}; done
+##done
+##for bm in ${bm_arr[@]}; do qsub pgs/collect_pgs.sh ${bm}_vQTL; done
+##
+##rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*all_pgs.csv" ../data/processed/pgs/
 
-for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}; done
-for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_prod; done
-for bm in hscrp_log hba1c; do qsub prs/collect_prs.sh whr_${bm}_main; done
+
+for bm in ${bm_arr[@]}; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}; done
+for bm in ${bm_arr[@]}; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_prod; done
+for bm in ${bm_arr[@]}; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_main; done
+
+for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}; done
+for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}_prod; done
+for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}_main; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/prs/*all_prs.csv" ../data/processed/prs/
 

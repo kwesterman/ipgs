@@ -69,7 +69,7 @@ ss_df <- fread(filepath, stringsAsFactors=F, data.table=F) %>%
 ### Prepare files for downstream analysis
 
 beta_col = paste0("Beta_G-", e)
-p_col = "robust_P_Value_Interaction"
+p_col = "robust_P_int"
 pgs_dir <- paste0(gwis_dir, "/../pgs")
 ss_df %>%
   filter(.data[[p_col]] < 0.05) %>%

@@ -106,9 +106,18 @@ saveRDS(covariate_df, "covariate_df.rds")
 
 ### Biomarkers -----------------------------------------------------------------
 
+# bm_fields <- c(
+#   alt = 30620, alb = 30600, apoB = 30640, hscrp = 30710, chol = 30690, glu = 30740, 
+#   hba1c = 30750, hdl = 30760, ldl = 30780, shbg = 30830, tg = 30870, vitD = 30890
+# ) %>%
+#   sapply(function(f) paste0("f.", f, ".0.0"))
+
 bm_fields <- c(
-  alt = 30620, alb = 30600, apoB = 30640, hscrp = 30710, chol = 30690, glu = 30740, 
-  hba1c = 30750, hdl = 30760, ldl = 30780, shbg = 30830, tg = 30870, vitD = 30890
+  alt = 30620, alb = 30600, apoA = 30630, apoB = 30640,
+  ast = 30650, hscrp = 30710, chol = 30690, creatinine = 30700,
+  cysC = 30720, bilirubin_dir = 30660, ggt = 30730, glu = 30740, hba1c = 30750,
+  hdl = 30760, ldl = 30780, lipA = 30790, shbg = 30830,
+  bilirubin_tot = 30840, tg = 30870, vitD = 30890
 ) %>%
   sapply(function(f) paste0("f.", f, ".0.0"))
 
@@ -215,10 +224,9 @@ saveRDS(gPC_df, "gPC_df.rds")
 # covariate_df <- readRDS("covariate_df.rds")
 # biomarker_df <- readRDS("biomarker_df.rds")
 # medical_df <- readRDS("medical_df.rds")
-# full_diet_df <- readRDS("full_diet_df.rds")
 # gPC_df <- readRDS("gPC_df.rds")
 
-withdrawn_consent <- scan("/humgen/florezlab/UKBB_app27892/withdraw27892_232_14_Nov_2022.txt", 
+withdrawn_consent <- scan("/humgen/florezlab/UKBB_app27892/w27892_2023_04_25.txt", 
                           what = character())
 
 phenos <- ac_df %>%
@@ -234,16 +242,18 @@ write_csv(phenos, "../data/processed/ukb_phenos_raw.csv")
 
 ### Phenotype processing and exclusions ----------------------------------------
 
-logged_risk_factors <- c("alt", "tg", "hscrp")
+logged_risk_factors <- c("tg", "hscrp", "alt", "ast", "ggt", "bilirubin_dir", "bilirubin_tot", "cysC", "lipA")
 risk_factors <- c(
   "bmi",
   "sbp", "dbp", "sbp_medsadj", "dbp_medsadj",
-  "alt_log", 
-  "chol", "ldl", "hdl", "apoB",
+  "alt_log", "ast_log", "ggt_log",
+  "chol", "ldl", "hdl", "apoB", "apoA",
   "tg_log",
   "hba1c", "glu",
   "hscrp_log",
-  "vitD",
+  "bilirubin_dir_log", "bilirubin_tot_log",
+  "shbg", "alb",
+  "creatinine", "cysC_log", "lipA_log", "vitD",
   "chol_statinadj", "ldl_statinadj", "apoB_statinadj"
 )
 
@@ -306,23 +316,22 @@ processed_phenos_panUKBB %>%
 
 set.seed(123)
 
-processed_phenos_EUR <- filter(processed_phenos_panUKBB, ancestry == "EUR")
+processed_phenos_EUR_unrelated <- read_csv("../data/processed/ukb_phenos_EUR_unrelated.csv") 
 
-training_ids <- sample(processed_phenos_EUR$id, 
-                       round(0.5 * nrow(processed_phenos_EUR)), 
+training_ids <- sample(processed_phenos_EUR_unrelated$id, 
+                       round(0.5 * nrow(processed_phenos_EUR_unrelated)), 
                        replace = FALSE)
-processed_phenos_EUR %>%
-  filter(ancestry == "EUR",
-         id %in% training_ids) %>%
+processed_phenos_EUR_unrelated %>%
+  filter(id %in% training_ids) %>%
   write_csv("../data/processed/ukb_training_set.csv")
 
-validation_ids <- sample(setdiff(processed_phenos_EUR$id, training_ids), 
-                         round(0.25 * nrow(processed_phenos_EUR)), 
+validation_ids <- sample(setdiff(processed_phenos_EUR_unrelated$id, training_ids), 
+                         round(0.25 * nrow(processed_phenos_EUR_unrelated)), 
                          replace = FALSE)
-processed_phenos_EUR %>%
+processed_phenos_EUR_unrelated %>%
   filter(id %in% validation_ids) %>%
   write_csv("../data/processed/ukb_validation_set.csv")
 
-processed_phenos_EUR %>%
+processed_phenos_EUR_unrelated %>%
   filter(!(id %in% c(training_ids, validation_ids))) %>%
   write_csv("../data/processed/ukb_testing_set.csv")

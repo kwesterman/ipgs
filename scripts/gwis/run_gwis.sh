@@ -20,11 +20,8 @@ chr=$SGE_TASK_ID
 
 
 gPC_arr=(gPC1 gPC2 gPC3 gPC4 gPC5 gPC6 gPC7 gPC8 gPC9 gPC10)
-covars="sex age age_squared ageBySex ${gPC_arr[@]}"
-
-##gPC_int_arr=( "${gPC_arr[@]/#/${exposure}By}" )
-##covars=$(cat ../data/processed/gwis_covariates.txt | tr '\n' ' ')
-##covars="${covars} ${gPC_int_arr[@]}"
+gPC_int_arr=( "${gPC_arr[@]/#/${exposure}By}" )
+covars="sex age age_squared ageBySex ${gPC_arr[@]} ${gPC_int_arr[@]}"
 
 
 source /broad/software/scripts/useuse
@@ -33,9 +30,10 @@ R --no-save <<EOF
 library(tidyverse)
 read_csv("../data/processed/ukb_training_set.csv") %>%
   select(where(~ !is.character(.x))) %>%
+  mutate(across(contains("gPC"), ~. * ${exposure}, .names="${exposure}By{.col}")) %>%
   write_csv("../data/processed/${exposure}_${pheno}_phenos_chr${chr}.tmp")
-  #mutate(across(contains("gPC"), ~. * ${exposure}, .names="${exposure}By{.col}")) %>%
 EOF
+
 
 singularity_dir=~/kw/singularity
 singularity exec \

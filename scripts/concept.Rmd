@@ -34,7 +34,7 @@ $Y \sim \beta_0 + \beta_EE + \beta_{PGS}PGS + \beta_{PGSxE}PGS*E$
 
 Though units are arbitrary, we will assume that the PGS, E, and Y terms are standardized to mean zero and unit variance. For type I error and power calculations, we will use the significance of the $\beta_{PGSxE}$ term, evaluated at *p* < 0.05. To understand effect sizes and clinical utility, we will examine the effect estimate for the same interaction term in two ways. Raw $\beta_{PGSxE}$ quantifies the expected change in the E-Y association (in $SD_Y / SD_E$) per $SD_PGS$, indicating the absolute degree of effect modification. A normalized version ($\beta_{PGSxE} / \beta_E$) compares this magnitude to that of the environmental main effect (e.g., a 1-SD difference in PGS changes the E effect by 20%). This quantity indicates whether the genetic modification meaningfully alters the overall E effect (regardless of statistical significance).
 
-```{r ipgs-concept}
+```{r ipgs-concept, fig.asp=0.5}
 set.seed(1)
 n_sim <- 10000
 concept_sim_df <- tibble(
@@ -42,45 +42,85 @@ concept_sim_df <- tibble(
   g = rbinom(n_sim, 2, 0.5),
   ipgs = rnorm(n_sim, 3, 1),
   y_g = rnorm(n_sim, 0.5 * e + g * e, 1),
+  y_g_main = rnorm(n_sim, 0.5 * e + 2 * g, 1),
   y_ipgs = rnorm(n_sim, 0.5 * e + ipgs * e, 1),
+  y_ipgs_main = rnorm(n_sim, 0.5 * e + 2 * ipgs, 1),
 )
 
-g_by_e_plt <- concept_sim_df %>%
+g_by_e_cartoon <- concept_sim_df %>%
   mutate(g = factor(g, labels = c("AA", "AB", "BB"))) %>%
   ggplot(aes(x = e, y = y_g, group = g, color = g)) +
-  geom_point(alpha = 0.2) +
+  # geom_point(alpha = 0.2) +
   geom_smooth(method = "lm", formula = "y ~ x", fullrange = TRUE) +
   scale_color_brewer(palette = "Dark2", name = "Genotype") +
-  labs(x = "Exposure", y = "Phenotype") +
+  labs(x = "Adiposity", y = "Cardiometabolic risk") +
   coord_cartesian(xlim = c(0.5, 5.5)) +
+  guides(color = guide_legend(override.aes = list(fill = NA))) +
   theme(axis.ticks = element_blank(), axis.text = element_blank(),
         panel.grid = element_blank(),
         legend.position = c(0.15, 0.8), 
         legend.background = element_rect(linewidth = 0.2, color = "black"))
 
-ipgs_by_e_plt <- concept_sim_df %>%
+ipgs_by_e_cartoon <- concept_sim_df %>%
+  mutate(ipgs = pmin(pmax(ipgs, 1), 5),
+         ipgs_bin = cut(ipgs, 
+                        quantile(ipgs, seq(0, 1, length.out = 6)), 
+                        labels = paste0("Q", 1:5),
+                        include.lowest = TRUE)) %>%
+  ggplot(aes(x = e, y = y_ipgs, group = ipgs_bin, color = ipgs_bin)) +
+  # geom_point(alpha = 0.2) +
+  # geom_smooth(data = filter(concept_sim_df, ipgs_bin  == "Q1"),
+  #             method = "lm", formula = "y ~ x", se = FALSE, color = "#132B43") +
+  # geom_smooth(data = filter(concept_sim_df, ipgs >= 2, ipgs <= 4),
+  #             method = "lm", formula = "y ~ x", se = FALSE, color = "#356E9D") +
+  # geom_smooth(data = filter(concept_sim_df, ipgs > 4),
+  #             method = "lm", formula = "y ~ x", se = FALSE, color = "#56B1F7") +
+  geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) +
+  scale_color_brewer(
+    name = "PGS quintile",
+    palette = "Blues"
+    # limits = c(1, 5),
+    # breaks = c(1.5, 4.5),
+    # labels = c("low", "high")
+  ) +
+  labs(x = "Adiposity", y = "Cardiometabolic risk") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.175, 0.725), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+g_by_e_cartoon + ipgs_by_e_cartoon
+```
+
+```{r pgs-main-versus-interaction-plot}
+pgs_main_by_e_plt <- concept_sim_df %>%
   mutate(ipgs = pmin(pmax(ipgs, 1), 5)) %>%
-  ggplot(aes(x = e, y = y_ipgs, color = ipgs)) +
+  ggplot(aes(x = e, y = y_ipgs_main, color = ipgs)) +
   geom_point(alpha = 0.2) +
   geom_smooth(data = filter(concept_sim_df, ipgs < 2),
               method = "lm", formula = "y ~ x", se = FALSE, color = "#132B43") +
+  geom_smooth(data = filter(concept_sim_df, ipgs >= 2, ipgs <= 4),
+              method = "lm", formula = "y ~ x", se = FALSE, color = "#356E9D") +
   geom_smooth(data = filter(concept_sim_df, ipgs > 4),
               method = "lm", formula = "y ~ x", se = FALSE, color = "#56B1F7") +
   scale_color_gradient(
-    name = "Polygenic\ninteraction\nscore",
+    name = "PGS",
     limits = c(1, 5),
     breaks = c(1.5, 4.5),
     labels = c("low", "high")
   ) +
-  labs(x = "Exposure", y = "Phenotype") +
+  labs(x = "Adiposity", y = "Risk factor") +
   coord_cartesian(xlim = c(0.5, 5.5)) +
   theme(axis.ticks = element_blank(), axis.text = element_blank(),
         panel.grid = element_blank(),
         legend.position = c(0.15, 0.75), 
         legend.background = element_rect(linewidth = 0.2, color = "black"))
 
-g_by_e_plt + ipgs_by_e_plt
+pgs_main_by_e_plt
+ipgs_by_e_plt + labs(x = "Adiposity", y = "Risk factor")
 ```
+
 ```{r additional-viz, eval=F}
 concept_sim_df %>%
   ggplot(aes(x = ipgs, y = y_ipgs)) +
@@ -115,9 +155,116 @@ concept_sim_df %>%
         legend.background = element_rect(linewidth = 0.2, color = "black"))
 ```
 
-
 # Alternative PGS approaches
 
 The primary iPGS approach described above treats the Y value as the outcome of interest, to be modeled with uncertainty as a function of E, G, and their interaction. Another approach is to recognize that ultimately we're seeking to use genetics to predict the latent correlation between E and Y for each individual and model that directly. Noting that the product of two centered variables is an estimate of their covariance, we can generate a new phenotype "$r_{ExY}$" that is the product of E and Y (after residualizing on all covariates). This type of strategy is less well-explored in the literature, but has the advantages of better leveraging longitudinal data (in estimating person-specific E-Y associations), straightforward use of PGS tools designed for main-effect GWAS, and clearer interpretation of the resulting genetic estimates.
 
 Other non-main effect approaches can be used to develop PGS that may participate more strongly in interactions. For example, even without using specific environments, one can aggregate over genetic effects on the variance of a continuous trait to develop a variance-PGS (vPGS) before using this score in GxE testing (Johnson 2022, Miao 2022?).
+
+```{r alternative-methods-viz, fig.asp=0.4}
+me_plt <- concept_sim_df %>%
+  mutate(ipgs_bin = cut(ipgs, quantile(ipgs, seq(0, 1, length.out = 5)),
+                        labels = paste0("Q", 1:4), include.lowest = TRUE)) %>%
+  ggplot(aes(x = ipgs_bin, y = y_ipgs_main)) +
+  geom_boxplot(outlier.shape = NA) +
+  labs(x = "mPGS", y = "Phenotype") +
+  coord_cartesian(ylim = quantile(concept_sim_df$y_ipgs_main, c(0.01, 0.99))) +
+  theme(axis.ticks = element_blank(), axis.text.y = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.75), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+vqtl_plt <- concept_sim_df %>%
+  mutate(ipgs_bin = cut(ipgs, quantile(ipgs, seq(0, 1, length.out = 5)),
+                        labels = paste0("Q", 1:4), include.lowest = TRUE)) %>%
+  ggplot(aes(x = ipgs_bin, y = y_ipgs)) +
+  geom_boxplot(outlier.shape = NA) +
+  # scale_color_gradient(
+  #   name = "Polygenic\ninteraction\nscore",
+  #   limits = c(1, 5),
+  #   breaks = c(1.5, 4.5),
+  #   labels = c("low", "high")
+  # ) +
+  labs(x = "vPGS", y = "Phenotype") +
+  coord_cartesian(ylim = quantile(concept_sim_df$y_ipgs, c(0.01, 0.99))) +
+  theme(axis.ticks = element_blank(), axis.text.y = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.75), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+# me_plt
+# vqtl_plt
+
+gwas_plt <- concept_sim_df %>%
+  mutate(g = factor(g, labels = c("AA", "AB", "BB"))) %>%
+  ggplot(aes(x = g, y = y_g_main)) +
+  geom_boxplot(outlier.shape = NA) +
+  labs(x = "G", y = "Y") +
+  # coord_cartesian(ylim = quantile(concept_sim_df$y_ipgs_main, c(0.01, 0.99))) +
+  theme(axis.ticks = element_blank(), axis.text.y = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.15, 0.75), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+igwas_plt <- concept_sim_df %>%
+  mutate(g = factor(g, labels = c("AA", "AB", "BB")),
+         e = cut(e, quantile(e, seq(0, 1, length.out = 4)),
+                        labels = paste0("T", 1:3), include.lowest = TRUE)) %>%
+  ggplot(aes(x = g, y = y_g, color = e)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_color_discrete(name = "E") +
+  labs(x = "G", y = "Y") +
+  # coord_cartesian(ylim = quantile(concept_sim_df$y_ipgs_main, c(0.01, 0.99))) +
+  theme(axis.ticks = element_blank(), axis.text.y = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.2, 0.7), 
+        legend.background = element_rect(linewidth = 0.2, color = "black"))
+
+vgwas_plt <- concept_sim_df %>%
+  mutate(g = factor(g, labels = c("AA", "AB", "BB"))) %>%
+  ggplot(aes(x = g, y = y_g)) +
+  geom_boxplot(outlier.shape = NA) +
+  # scale_color_gradient(
+  #   name = "Polygenic\ninteraction\nscore",
+  #   limits = c(1, 5),
+  #   breaks = c(1.5, 4.5),
+  #   labels = c("low", "high")
+  # ) +
+  labs(x = "G", y = "Y") +
+  theme(axis.ticks = element_blank(), axis.text.y = element_blank(),
+        panel.grid = element_blank())
+
+gwas_plt + igwas_plt + vgwas_plt
+```
+
+```{r dataset-workflow-viz, fig.asp=0.4}
+ipgs_by_e_plt <- concept_sim_df %>%
+  mutate(ipgs = pmin(pmax(ipgs, 1), 5),
+         ipgs_bin = cut(ipgs, 
+                        quantile(ipgs, seq(0, 1, length.out = 6)), 
+                        labels = paste0("Q", 1:5),
+                        include.lowest = TRUE)) %>%
+  ggplot(aes(x = e, y = y_ipgs, group = ipgs_bin, color = ipgs_bin)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) +
+  scale_color_brewer(
+    name = "PGS quintile",
+    palette = "Blues"
+  ) +
+  labs(x = "Adiposity", y = "Cardiometabolic risk") +
+  coord_cartesian(xlim = c(0.5, 5.5)) +
+  theme(axis.ticks = element_blank(), axis.text = element_blank(),
+        panel.grid = element_blank())
+
+legend <- cowplot::get_legend(ipgs_by_e_plt)
+
+ukb_panel <- ipgs_by_e_plt + 
+  labs(title = "UKB Testing Set", x = "BMI", y = "Biomarker") +
+  theme(legend.position = "none")
+aou_panel <- ipgs_by_e_plt + 
+  labs(title = "All of US", x = "BMI", y = "Biomarker") +
+  theme(legend.position = "none")
+ukb_panel + aou_panel + legend +
+  plot_layout(widths = c(2, 2, 1))
+```
+
