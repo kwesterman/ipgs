@@ -27,7 +27,7 @@ for bm in ${bm_arr[@]}; do qsub -t 1-22 gwas/run_gwas.sh $bm; done
 for exp in bmi; do
 	for bm in ${bm_arr[@]}; do qsub -t 1-22 gwis/run_gwis.sh $exp $bm; done
 done
-for bm in "${bm_arr[@]}"; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv $bm ; done
+for bm in ${bm_arr[@]}; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv $bm ; done
 
 for bm in ${bm_arr[@]}; do qsub gwas/postprocess_gwas.sh ${bm}; done
 for exp in bmi; do
@@ -38,12 +38,10 @@ for bm in "${bm_arr[@]}"; do qsub vgwas/postprocess_vgwas.sh $bm ; done
 # Generate and calculate PGS
 
 for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${bm}; done
-for exp in bmi whr; do
+for exp in bmi; do
         for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${exp}_${bm}; done
 done
 for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${bm}_vQTL; done
-
-for bm in ${bm_arr[@]}; do qsub prset/run_prset.sh ${bm}; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.all_score" ../data/processed/pgs/
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.snp" ../data/processed/pgs/
@@ -55,7 +53,6 @@ rsync -avP ../data/processed/pgs/optimized_*_params.csv uger:"florez_ukb_project
 for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm} mpgs; done
 for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh bmi_${bm} ipgs; done
 for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm}_vQTL vpgs; done
-for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm}_prset ppgs; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*_pgs_weights_hg38.txt" ../data/processed/pgs/
 gsutil cp ../data/processed/pgs/*_pgs_weights_hg38.txt gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/

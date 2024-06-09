@@ -42,14 +42,18 @@ ${liftover} \
 	${pgs_dir}/${tag}_pgs_snps_hg38.txt \
 	${pgs_dir}/${tag}_pgs_snps_hg38.unmapped
 
-if [ -s "${pgs_dir}/${tag}_pgs_snps_hg38.unmapped" ]; then exit 1; fi
+# if [ -s "${pgs_dir}/${tag}_pgs_snps_hg38.unmapped" ]; then echo "UNMAPPED VARIANTS" && exit 1; fi
 
 
 # Output final set of PGS weights
 
 R --vanilla <<EOF
 library(tidyverse)
-pgs_weights_df <- readRDS("tmp_${tag}_pgs_weights.rds")
+unmapped_df <- read_tsv("${pgs_dir}/${tag}_pgs_snps_hg38.unmapped",
+                   	skip = 1, col_names = c("CHR", "POS", "POS2")) %>%
+  mutate(CHR = as.integer(gsub("^chr", "", CHR)))
+pgs_weights_df <- readRDS("tmp_${tag}_pgs_weights.rds") %>%
+  anti_join(unmapped_df, by = c("CHR", "POS"))
 snp_df <- read_tsv("${pgs_dir}/${tag}_pgs_snps_hg38.txt",
 		   col_names = c("CHR", "POS", "POS2"))
 snp_df %>%
