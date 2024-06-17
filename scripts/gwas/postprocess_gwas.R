@@ -67,26 +67,25 @@ ss_df <- fread(filepath, stringsAsFactors=F, data.table=F) %>%
 ### Prepare files for downstream analysis
 
 beta_col = "Beta_Marginal"
-prs_dir <- paste0(gwas_dir, "/../prs")
+p_col = "P_marg"
+pgs_dir <- paste0(gwas_dir, "/../pgs")
 ss_df %>%
-  filter(robust_P_marg < 0.05) %>%
-  select(SNP, CHR, POS, EA, NEA, beta = {{beta_col}}, P_marg, robust_P_marg) %>%
+  filter(.data[[p_col]] < 0.05) %>%
+  select(SNP, CHR, POS, EA, NEA, beta = {{beta_col}}, P = {{p_col}}) %>%
   group_by(SNP) %>%
-  arrange(robust_P_marg) %>%
+  arrange(P) %>%
   slice(1) %>%
   ungroup() %>%
-  write_tsv(paste0(prs_dir, "/", y, "_prsInput"))
-  #filter(robust_P_marg == min(robust_P_marg)) %>%
+  write_tsv(paste0(pgs_dir, "/", y, "_pgsInput"))
 
 ldsc_dir <- paste0(gwas_dir, "/../ldsc")
 ss_df %>%
-  select(SNP, CHR, POS, EA, NEA, AF, N, Beta = {{beta_col}}, P = robust_P_marg) %>% 
+  select(SNP, CHR, POS, EA, NEA, AF, N, Beta = {{beta_col}}, P = {{p_col}}) %>% 
   group_by(SNP) %>%
   arrange(P) %>%
   slice(1) %>%
   ungroup() %>%
   write_tsv(paste0(ldsc_dir, "/", y, "_ldscInput"))
-  #filter(P == min(P)) %>%
 
 
 ### Create Q-Q plot

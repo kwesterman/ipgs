@@ -1,11 +1,12 @@
 ---
 output: html_document
-title: "UKB results for iPRS proof-of-concept study"
+title: "UKB results for ipgs proof-of-concept study"
 ---
 
 ```{r setup, include=F}
 knitr::opts_chunk$set(echo = F, message = F,warning = F, 
-                      dpi = 150, fig.path = "../output/ukb_results/")
+                      dpi = 150, fig.path = "../output/ukb_results/",
+                      cache.path = "../cache/ukb_results/")
 suppressMessages(silent <- lapply(
   c("knitr", "kableExtra", "tidyverse", "patchwork"), 
   library, character.only = TRUE))
@@ -14,8 +15,11 @@ theme_set(theme_bw())
 
 ```{r load-data}
 ukb_subset_names <- c("training", "validation", "testing")
+ukb_subset_names_clean <- c("Training", "Validation", "Testing")
 ukb_subsets <- map(set_names(ukb_subset_names), function(set) {
-  read_csv(paste0("../data/processed/ukb_", set, "_set.csv"))
+  read_csv(paste0("../data/processed/ukb_", set, "_set.csv"), show_col_types = FALSE) %>%
+    mutate(across(matches("^gPC"), ~ . * bmi, .names = "bmiBy{.col}"),
+           across(matches("^gPC"), ~ . * whr, .names = "whrBy{.col}"))
 })
 ```
 
@@ -28,14 +32,59 @@ knitr::include_graphics("../doc/workflow_diagram.pdf")
 Overall dataset consists of European-ancestry individuals from the UKBB (based on Pan-UKBB; N ~ 320,000).
 
 * 50% training set: GWAS/GWIS
-* 25% validation set: PRS parameter optimization
+* 25% validation set: PGS parameter optimization
 * 25% testing set: evaluation
 
-Primary metric for evaluation (validation & testing): significance of regression PRSxE term
+Primary metric for evaluation (validation & testing): significance of regression PGSxE term
+
+Variables being manipulated:
+
+* Exposure: BMI, WHR
+* Outcome: log(hsCRP), HbA1c
+* PGS type: mPGS, iPGS, vPGS, pPGS
+* PGS name/threshold: 0.05, 0.005, ..., 5e-08
 
 # Data distributions
 
 Plots reflect the testing set.
+
+```{r configuration}
+exposures <- c("bmi", "whr")
+exposures_clean <- c("BMI", "WHR")
+exposures <- c("bmi")
+exposures_clean <- c("BMI")
+
+outcomes <- c("hscrp_log", "hba1c", "ldl_statinadj", "tg_log", "alt_log")
+outcomes_clean <- c("log(hsCRP)", "HbA1c", "LDL-C", "log(TG)", "log(ALT)")
+outcomes <- c("hscrp_log", "hba1c", "ldl_statinadj", "tg_log", "alt_log", 
+              "ggt_log", "hdl", "alb", "lipA_log", "vitD")
+outcomes_clean <- c("log(hsCRP)", "HbA1c", "LDL-C", "log(TG)", "log(ALT)",
+                    "log(GGT)", "HDL-C", "Albumin", "log(LipA)", "Vitamin D")
+
+threshold_vec <- 5 * 10 ** seq(-8, -2)
+threshold_names <- paste0("Pt_", c("5e-08", "5e-07", "5e-06", "5e-05", "0.0005", 
+                                   "0.005", "0.05"))
+threshold_names_clean <- c("P<5e-8", "P<5e-7", "P<5e-6", "P<5e-5", "P<5e-4", 
+                           "P<0.005", "P<0.05")
+
+pgs_types <- c("mpgs", "ipgs", "vpgs", "ppgs")
+pgs_types_clean <- c("mPGS", "iPGS", "vPGS", "pPGS")
+
+pgs_config_df <- expand_grid(
+  e = exposures,
+  y = outcomes,
+  pgs_type = pgs_types,
+  set = names(ukb_subsets),
+  thresh_name = threshold_names
+) %>%
+  mutate(tag = case_when(
+    pgs_type == "mpgs" ~ paste0(y),
+    pgs_type == "ipgs" ~ paste0(e, "_", y),
+    pgs_type == "vpgs" ~ paste0(y, "_vQTL"),
+    pgs_type == "ppgs" ~ paste0(y, "_prset")
+    # type == "prod" ~ paste0(e, "_", y, "_prod"),
+  ))
+```
 
 ```{r histograms}
 plot_histogram <- function(f) {
@@ -43,7 +92,7 @@ plot_histogram <- function(f) {
     select(x = {{ f }}) %>%
     filter(!is.na(x)) %>%
     ggplot(aes(x = x)) +
-    geom_histogram(stat = "bin") +
+    geom_histogram(stat = "bin", bins = 30) +
     labs(x = f)
 }
 
@@ -51,186 +100,628 @@ hscrp_hist <- plot_histogram("hscrp_log")
 hba1c_hist <- plot_histogram("hba1c")
 
 hscrp_hist + hba1c_hist
+
+for (outcome in outcomes) {
+  print(plot_histogram(outcome))
+}
 ```
 
-# PRS performance
+# PGS performance
 
-```{r configuration}
-exposures <- "whr"
-exposures_clean <- "WHR"
-
-outcomes <- c("hscrp_log", "hba1c")
-outcomes_clean <- c("log(hsCRP)", "HbA1c")
-
-threshold_vec <- c("0.05", "0.01", "0.00001", "0.00000005")
-prs_names <- paste0("thresh", threshold_vec)
-prs_names_clean <- c("P<0.05", "P<0.01", "P<1e-5", "P<5e-8")
-
-types <- c("gxe", "prod", "main")
-types_clean <- c("GxE", "GxE product", "Main effect")
-
-prs_config_df <- expand_grid(
-  e = exposures,
-  y = outcomes,
-  type = types
-) %>%
-  mutate(tag = case_when(
-    type == "gxe" ~ paste0(e, "_", y),
-    type == "prod" ~ paste0(e, "_", y, "_prod"),
-    type == "main" ~ paste0(e, "_", y, "_main"),
-  ))
-```
-
-```{r stacking}
-get_stack_weights <- function(e, y, tag, prs_names, pheno_df) {
-  prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv"))
+```{r stacking, eval = FALSE}
+get_stack_weights <- function(e, y, tag, thresh_names, pheno_df) {
+  pgs_df <- read_csv(paste0("../data/processed/pgs/", tag, "_all_pgs.csv"),
+                     show_col_types = FALSE)
   df <- pheno_df %>%
-    inner_join(prs_df, by = "id") %>%
+    inner_join(pgs_df, by = "id") %>%
     filter(!is.na(!! sym(e)), !is.na(!! sym(y)))
-  me_lm_str <- paste0(y, " ~ ", e, " + ", paste(prs_names, collapse = " + "))
+  me_lm_str <- paste0(y, " ~ ", e, " + ", paste(thresh_names, collapse = " + "))
   me_lm_fit <- lm(as.formula(me_lm_str), data = df, na.action = na.exclude)
   me_lm_resids <- resid(me_lm_fit)
-  scaled_prs_mat <- df %>%
-    select(all_of(prs_names)) %>%
+  scaled_pgs_mat <- df %>%
+    select(all_of(thresh_names)) %>%
     mutate(across(everything(), ~ ifelse(all(.x == 0), 0, scale(.x)))) %>%
     as.matrix()
-  gxe_mat <- scaled_prs_mat * df[[e]]  # Column-wise multiplication
+  gxe_mat <- scaled_pgs_mat * df[[e]]  # Column-wise multiplication
   gxe_fit_cv <- glmnet::cv.glmnet(gxe_mat, me_lm_resids,
                                   alpha = 0, lower.limits = 0, nfolds = 5)
-  weights <- coef(gxe_fit_cv, s = "lambda.min")[prs_names, ]
+  weights <- coef(gxe_fit_cv, s = "lambda.min")[thresh_names, ]
   weights_norm <- weights / sum(weights)
   weights_norm
 }
 
-calc_stacked_prs <- function(df, weights) {
-  scaled_prs_mat <- df %>%
+calc_stacked_pgs <- function(df, weights) {
+  scaled_pgs_mat <- df %>%
     select(all_of(names(weights))) %>%
     mutate(across(everything(), scale)) %>%
     as.matrix()
-  stacked_prs <- scaled_prs_mat %*% weights
-  stacked_prs
+  stacked_pgs <- scaled_pgs_mat %*% weights
+  stacked_pgs
 }
 
-stack_weights_df <- prs_config_df %>%
+stack_weights_df <- pgs_config_df %>%
   rowwise() %>%
-  mutate(stack_weights = list(get_stack_weights(e, y, tag, prs_names, ukb_subsets$validation))) %>%
+  mutate(stack_weights = list(get_stack_weights(e, y, tag, thresh_names, ukb_subsets$validation))) %>%
   ungroup()
 ```
 
-```{r prs-testing-prep}
-# get_prs <- function(e, y, prs_names, tag) {
-#   prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv")) %>%
-#     select(id, all_of(prs_names))
-#   stack_weights <- get_stack_weights(e, y, tag, prs_names, ukb_subsets$validation)
-#   prs_df$stacked <- calc_stacked_prs(prs_df, stack_weights)
-#   prs_df
-# }
-test_prs_main <- function(y, tag, set, prs_name) {
-  prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv"))
-  if (prs_name == "stacked") {
+```{r pgs-testing-prep}
+read_pgs <- function(tag) {
+  pgs_df <- read_csv(paste0("../data/processed/pgs/", tag, "_all_pgs.csv"), 
+                     show_col_types = FALSE)
+  pgs_df
+}
+
+read_pgs_prsice <- function(tag) {
+  pgs_df <- read_delim(paste0("../data/processed/pgs/", tag, ".all_score"), 
+                       delim = " ", show_col_types = FALSE) %>%
+    select(-FID, id = IID, everything())
+  pgs_df
+}
+
+test_pgs_main <- function(y, tag, set, thresh_name, covars = NULL) {
+  pgs_df <- read_pgs_prsice(tag)
+  if (thresh_name == "stacked") {
     stack_weights <- pull(filter(stack_weights_df, tag == .env$tag), stack_weights)[[1]]
-    prs_df$stacked <- calc_stacked_prs(prs_df, stack_weights)
+    pgs_df$stacked <- calc_stacked_pgs(pgs_df, stack_weights)
   }
-  prs_df <- select(prs_df, id, prs = {{prs_name}})
-  regression_df <- inner_join(ukb_subsets[[set]], prs_df, by = "id")
-  lm_form_str <- paste0(y, " ~ prs")
+  pgs_df <- select(pgs_df, id, pgs = {{thresh_name}})
+  regression_df <- inner_join(ukb_subsets[[set]], pgs_df, by = "id")
+  lm_form_str <- paste0(y, " ~ pgs")
+  if (!is.null(covars)) {
+    lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
+  }
   tryCatch({
     lm_fit <- lm(as.formula(lm_form_str), data = regression_df)
     lm_fit %>%
       broom::tidy() %>%
-      filter(term == "prs")
+      filter(term == "pgs")
   }, error = function(e) tibble())
 }
 
-test_prs_gxe <- function(e, y, tag, set, prs_name) {
-  prs_df <- read_csv(paste0("../data/processed/prs/", tag, "_all_prs.csv"))
-  if (prs_name == "stacked") {
-    stack_weights <- pull(filter(stack_weights_df, tag == .env$tag), stack_weights)[[1]]
-    prs_df$stacked <- calc_stacked_prs(prs_df, stack_weights)
+test_pgs_gxe <- function(e, y, tag, set, thresh_name, covars = NULL) {
+  # pgs_df <- read_csv(paste0("../data/processed/pgs/", tag, "_all_pgs.csv"), 
+  #                    show_col_types = FALSE)
+  # if (thresh_name == "stacked") {
+  #   stack_weights <- pull(filter(stack_weights_df, tag == .env$tag), stack_weights)[[1]]
+  #   pgs_df$stacked <- calc_stacked_pgs(pgs_df, stack_weights)
+  # }
+  pgs_df <- tryCatch({
+    pgs_df <- read_pgs_prsice(tag)
+    pgs_df <- select(pgs_df, id, pgs = {{thresh_name}})
+    regression_df <- inner_join(ukb_subsets[[set]], pgs_df, by = "id")
+  }, error = function(e) tibble())
+  lm_form_str <- paste0(y, " ~ pgs * ", e)
+  if (!is.null(covars)) {
+    lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
   }
-  prs_df <- select(prs_df, id, prs = {{prs_name}})
-  regression_df <- inner_join(ukb_subsets[[set]], prs_df, by = "id")
-  lm_form_str <- paste0(y, " ~ prs * ", e)
   tryCatch({
     lm_fit <- lm(as.formula(lm_form_str), data = regression_df)
     lm_fit %>%
       broom::tidy() %>%
-      filter(term == paste0("prs:", e))
+      filter(term == paste0("pgs:", e))
   }, error = function(e) tibble())
 }
+
+gPCs <- paste0("gPC", 1:10)
+primary_covars <- c("sex", "age", "age_squared", "ageBySex", gPCs)
 ```
 
-```{r prs-main-results}
-prs_test_main_res_df <- prs_config_df %>%
-  cross_join(expand_grid(set = names(ukb_subsets),
-                         prs_name = prs_names)) %>%
+```{r pgs-main-results, cache=1}
+pgs_test_main_res_df <- pgs_config_df %>%
+  filter(pgs_type == "mpgs") %>%
+  select(y, pgs_type, tag, set, thresh_name) %>%
+  distinct() %>%
   rowwise() %>%
-  mutate(lm_fit = list(test_prs_main(y, tag, set, prs_name))) %>%
+  mutate(lm_fit = list(test_pgs_main(y, tag, set, thresh_name, primary_covars))) %>%
   ungroup() %>%
   unnest(lm_fit)
+
+optimal_pgs_main_df <- pgs_test_main_res_df %>%
+  filter(set == "validation") %>%
+  group_by(y, pgs_type) %>%
+  filter(statistic == max(statistic)) %>%
+  ungroup() %>%
+  mutate(optimal = TRUE) %>%
+  select(y, pgs_type, thresh_name, optimal)
 ```
 
-```{r prs-results}
-prs_test_res_df <- prs_config_df %>%
-  cross_join(expand_grid(set = names(ukb_subsets),
-                         prs_name = c(prs_names, "stacked"))) %>%
+```{r plot-pgs-main-results, fig.asp=1.2}
+pgs_test_main_res_df %>%
+  left_join(optimal_pgs_main_df, by = c("y", "pgs_type", "thresh_name")) %>%
+  mutate(color = if_else(set == "validation", optimal, NA),
+         statistic = if_else(set == "testing" & optimal == FALSE, NA, statistic),
+         y = factor(y, levels = outcomes, labels = outcomes_clean),
+         set = factor(set, levels = ukb_subset_names, 
+                      labels = ukb_subset_names_clean),
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = thresh_name, y = statistic, color = color)) +
+  geom_bar(stat = "identity") +
+  scale_color_discrete(name = "Optimal", na.translate = FALSE) +
+  facet_wrap(vars(y, set), nrow = length(outcomes), scale = "free_y") +
+  labs(x = "", y = "PGS main effect z-statistic",
+       title = "Positive control: standard GWAS/main effects pipeline") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 0.9))
+```
+
+```{r mpgs-results, cache=1}
+mpgs_test_res_df <- pgs_config_df %>%
+  filter(pgs_type == "mpgs") %>%
   rowwise() %>%
-  mutate(lm_fit = list(test_prs_gxe(e, y, tag, set, prs_name))) %>%
+  mutate(lm_fit = list(test_pgs_gxe(e, y, tag, set, thresh_name, 
+                                    c(primary_covars, paste0(e, "By", gPCs))))) %>%
+  ungroup() %>%
+  unnest(lm_fit)
+
+optimal_mpgs_df <- mpgs_test_res_df %>%
+  filter(set == "validation") %>%
+  group_by(e, y) %>%
+  filter(statistic == max(statistic)) %>%
+  ungroup() %>%
+  mutate(optimal = TRUE) %>%
+  select(e, y, pgs_type, thresh_name, optimal)
+
+mpgs_test_res_df %>%
+  filter(set == "validation") %>%
+  left_join(optimal_mpgs_df, by = c("e", "y", "pgs_type", "thresh_name")) %>%
+  mutate(y = factor(y, levels = outcomes, labels = outcomes_clean),
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = thresh_name, y = statistic, color = optimal)) +
+  geom_bar(stat = "identity") +
+  scale_color_discrete(name = "Optimal", na.translate = FALSE) +
+  facet_wrap(vars(y, e), nrow = 2, scale = "free_y") +
+  labs(x = "", y = "mPGS GxE z-statistic",
+       title = "Optimization of mPGS for PGSxE") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 0.9))
+```
+
+```{r ipgs-results}
+ipgs_test_res_df <- pgs_config_df %>%
+  filter(pgs_type == "ipgs") %>%
+  rowwise() %>%
+  mutate(lm_fit = list(test_pgs_gxe(e, y, tag, set, thresh_name, 
+                                    c(primary_covars, paste0(e, "By", gPCs))))) %>%
   ungroup() %>%
   unnest(lm_fit)
 
 # e <- "whr"
 # y <- "hba1c"
-# tag <- "whr_hba1c_prod"
+# tag <- "whr_hba1c"
 # pheno_df <- ukb_subsets$validation
-```
 
-```{r plot-prs-main-results, fig.asp=0.5}
-prs_test_main_res_df %>%
-  filter(set == "testing",
-         type == "main") %>%
+optimal_ipgs_df <- ipgs_test_res_df %>%
+  filter(set == "validation") %>%
+  group_by(e, y) %>%
+  filter(statistic == max(statistic)) %>%
+  ungroup() %>%
+  mutate(optimal = TRUE) %>%
+  select(e, y, pgs_type, thresh_name, optimal)
+
+ipgs_test_res_df %>%
+  filter(set == "validation") %>%
+  left_join(optimal_ipgs_df, by = c("e", "y", "pgs_type", "thresh_name")) %>%
   mutate(y = factor(y, levels = outcomes, labels = outcomes_clean),
-         type = factor(type, levels = types, labels = types_clean),
-         prs_name = factor(prs_name, 
-                           levels = prs_names,
-                           labels = prs_names_clean)) %>%
-  ggplot(aes(x = prs_name, y = statistic)) +
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = thresh_name, y = statistic, color = optimal)) +
   geom_bar(stat = "identity") +
-  facet_wrap(vars(type, y), ncol = 2, scale = "free_y") +
-  labs(x = "", y = "Interaction test z-statistic",
-       title = "Positive control: same pipeline for genetic main effects") +
-  theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
+  scale_color_discrete(name = "Optimal", na.translate = FALSE) +
+  facet_wrap(vars(y, e), nrow = 2, scale = "free_y") +
+  labs(x = "", y = "iPGS GxE z-statistic",
+       title = "Optimization of iPGS for PGSxE") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 0.9))
 ```
 
-```{r plot-prs-results, fig.asp=1}
-prs_test_res_df %>%
-  filter(type == "gxe") %>%
-  mutate(e = factor(e, levels = exposures, labels = exposures_clean),
-         y = factor(y, levels = outcomes, labels = outcomes_clean),
-         set = factor(set, levels = names(ukb_subsets), 
-                      labels = paste0(str_to_title(names(ukb_subsets)), " set")),
-         prs_name = factor(prs_name, 
-                           levels = c(prs_names, "stacked"),
-                           labels = c(prs_names_clean, "Stacked"))) %>%
-  ggplot(aes(x = prs_name, y = statistic)) +
-  geom_bar(stat = "identity") +
-  facet_wrap(vars(set, y), ncol = 2, scale = "free_y") +
-  labs(x = "", y = "Interaction test z-statistic",
-       title = "GxE testing results from the primary iPRS") +
-  theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
+```{r vpgs-results}
+vpgs_test_res_df <- pgs_config_df %>%
+  filter(pgs_type == "vpgs") %>%
+  rowwise() %>%
+  mutate(lm_fit = list(test_pgs_gxe(e, y, tag, set, thresh_name, 
+                                    c(primary_covars, paste0(e, "By", gPCs))))) %>%
+  ungroup() %>%
+  unnest(lm_fit)
 
-prs_test_res_df %>%
+optimal_vpgs_df <- vpgs_test_res_df %>%
+  filter(set == "validation") %>%
+  group_by(e, y) %>%
+  filter(statistic == max(statistic)) %>%
+  ungroup() %>%
+  mutate(optimal = TRUE) %>%
+  select(e, y, pgs_type, thresh_name, optimal)
+
+vpgs_test_res_df %>%
+  filter(set == "validation") %>%
+  left_join(optimal_vpgs_df, by = c("e", "y", "pgs_type", "thresh_name")) %>%
+  mutate(y = factor(y, levels = outcomes, labels = outcomes_clean),
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = thresh_name, y = statistic, color = optimal)) +
+  geom_bar(stat = "identity") +
+  scale_color_discrete(name = "Optimal", na.translate = FALSE) +
+  facet_wrap(vars(y, e), nrow = 2, scale = "free_y") +
+  labs(x = "", y = "vPGS GxE z-statistic",
+       title = "Optimization of vPGS for PGSxE") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 0.9))
+```
+
+```{r ppgs-results, fig.asp=1.2}
+read_pgs_prset <- function(tag) {
+  ppgs_df <- read_delim(paste0("../data/processed/pgs/", tag, ".all_score"), 
+                       delim = " ", show_col_types = FALSE) %>%
+    select(id = IID, everything(), -FID, -contains("Base")) %>%
+    rename_with(~ str_replace_all(., "_[\\d\\.]+$", ""), -id)
+  ppgs_df
+}
+
+get_ppgs_weights <- function(e, y, tag, set, covars) {
+  pgs_df <- read_pgs_prset(tag)
+  pathways <- setdiff(names(pgs_df), "id")
+  regression_df <- inner_join(ukb_subsets[[set]], pgs_df, by = "id")
+  lm_form_str <- paste0(y, " ~ pgs * ", e)
+  if (!is.null(covars)) {
+    lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
+  }
+  univariate_ppgs_gxe_df <- parallel::mclapply(
+    setNames(pathways, pathways), 
+    function(p) {
+      regression_df$pgs <- regression_df[[p]]
+      lm_fit <- lm(as.formula(lm_form_str), data = regression_df)
+      lm_fit %>%
+        broom::tidy() %>%
+        filter(term == paste0("pgs:", e))
+    }, 
+    mc.cores = 16) %>%
+    bind_rows(.id = "pathway")
+  univariate_ppgs_gxe_df
+}
+
+test_ppgs_gxe <- function(e, y, tag, set, covars, weights_df) {
+  pgs_df <- read_pgs_prset(tag)
+  stopifnot(identical(names(pgs_df)[-1], weights_df$pathway))
+  pgs_df$ppgs <- as.matrix(pgs_df[-1]) %*% weights_df$estimate
+  regression_df <- inner_join(ukb_subsets[[set]], pgs_df, by = "id")
+  lm_form_str <- paste0(y, " ~ ppgs * ", e)
+  if (!is.null(covars)) {
+    lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
+  }
+  lm_fit <- lm(as.formula(lm_form_str), data = regression_df)
+  lm_fit %>%
+    broom::tidy() %>%
+    filter(term == paste0("ppgs:", e))
+}
+
+ppgs_weights_df <- pgs_config_df %>%
+  select(e, y) %>%
+  distinct() %>% 
+  rowwise() %>%
+  mutate(pathway_fits = list(
+    get_ppgs_weights(e, y, paste0(y, "_prset"), "validation", 
+                     c(primary_covars, paste0(e, "By", gPCs)))
+  ))
+
+ppgs_test_res_df <- pgs_config_df %>%
+  filter(pgs_type == "ppgs",
+         thresh_name == "Pt_5e-06") %>%
+  inner_join(ppgs_weights_df, by = c("e", "y")) %>%
+  rowwise() %>%
+  mutate(lm_fit = list(test_ppgs_gxe(e, y, tag, set, 
+                                     c(primary_covars, paste0(e, "By", gPCs)),
+                                     pathway_fits))) %>%
+  ungroup() %>%
+  unnest(lm_fit)
+  
+# optimal_ppgs_df <- ppgs_test_res_df %>%
+#   select(e, y, )
+#   filter(set == "validation") %>%
+#   group_by(e, y) %>%
+#   filter(statistic == max(statistic)) %>%
+#   ungroup() %>%
+#   mutate(optimal = TRUE) %>%
+#   select(e, y, pgs_type, thresh_name, optimal)
+
+# ppgs_test_res_df %>%
+#   filter(set == "validation") %>%
+#   left_join(optimal_ppgs_df, by = c("e", "y", "pgs_type", "thresh_name")) %>%
+#   mutate(y = factor(y, levels = outcomes, labels = outcomes_clean),
+#          thresh_name = factor(thresh_name, 
+#                               levels = threshold_names,
+#                               labels = threshold_names_clean)) %>%
+#   ggplot(aes(x = thresh_name, y = statistic, color = optimal)) +
+#   geom_bar(stat = "identity") +
+#   scale_color_discrete(name = "Optimal", na.translate = FALSE) +
+#   facet_wrap(vars(y, e), nrow = 2, scale = "free_y") +
+#   labs(x = "", y = "ppgs GxE z-statistic",
+#        title = "Optimization of ppgs for PGSxE") +
+#   theme(axis.text.x = element_text(angle = 25, hjust = 0.9))
+
+ppgs_weights_df %>%
+  unnest(pathway_fits) %>%
+  arrange(estimate) %>%
+  mutate(pathway = factor(pathway, levels = pathway, 
+                          labels = str_replace(pathway, "HALLMARK_", ""))) %>%
+  ggplot(aes(x = pathway, y = estimate)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(vars(e, y), ncol = 2, scale = "free_y") +
+  labs(x = "", y = "pPGSxE effect size (final pPGS weight)",
+       title = "Optimization of pPGS for PGSxE (validation set)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9))
+```
+
+```{r plot-pgs-results, fig.asp=1.2}
+all_pgs_test_res_df <- bind_rows(
+  inner_join(mpgs_test_res_df, optimal_mpgs_df),
+  inner_join(ipgs_test_res_df, optimal_ipgs_df),
+  inner_join(vpgs_test_res_df, optimal_vpgs_df),
+  ppgs_test_res_df  # No separate optimal_df
+)
+
+n_biomarkers <- 10
+bonferroni <- 0.05 / n_biomarkers
+
+all_pgs_test_res_df %>%
   filter(set == "testing") %>%
   mutate(e = factor(e, levels = exposures, labels = exposures_clean),
          y = factor(y, levels = outcomes, labels = outcomes_clean),
-         type = factor(type, levels = types, labels = types_clean),
-         prs_name = factor(prs_name, 
-                           levels = c(prs_names, "stacked"),
-                           labels = c(prs_names_clean, "Stacked"))) %>%
-  ggplot(aes(x = prs_name, y = statistic)) +
+         pgs_type = factor(pgs_type, levels = pgs_types, labels = pgs_types_clean),
+         set = factor(set, levels = names(ukb_subsets), 
+                      labels = paste0(str_to_title(names(ukb_subsets)), " set")),
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = pgs_type, y = statistic, fill = pgs_type)) +
   geom_bar(stat = "identity") +
-  facet_wrap(vars(type, y), ncol = 2, scale = "free_y") +
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_hline(yintercept = qnorm(0.05 / 2, lower.tail = FALSE), linetype = "dashed") +
+  geom_hline(yintercept = qnorm(bonferroni / 2, lower.tail = FALSE), linetype = "dashed") +
+  scale_fill_discrete(name = "PGS type") +
+  facet_wrap(vars(y), ncol = 2, scale = "fixed") +
   labs(x = "", y = "Interaction test z-statistic",
-       title = "GxE testing results in the testing set only") +
+       title = "PGSxE testing (testing set)") +
+  theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
+
+all_pgs_test_res_df %>%
+  filter(set == "testing") %>%
+  group_by(y) %>%
+  summarise(any_nom = any(p.value < 0.05),
+            any_bonf = any(p.value < bonferroni)) %>%
+  count(any_nom, any_bonf) %>%
+  arrange(desc(n))
+
+all_pgs_test_res_df %>%
+  filter(set == "testing") %>%
+  group_by(y) %>%
+  summarise(top_pgs_type = pgs_type[which.max(statistic)]) %>%
+  count(top_pgs_type) %>%
+  arrange(desc(n))
+
+all_pgs_test_res_df %>%
+  filter(set == "testing") %>%
+  arrange(p.value) %>%
+  head(5)
+```
+
+# Specific visualizations
+
+```{r example-viz}
+e <- "bmi"
+y <- "hscrp_log"
+tag <- "bmi_hscrp_log"
+thresh_name <- "Pt_5e-08"
+e_clean <- "BMI"
+y_clean <- "log(hsCRP)"
+pgs_df <- read_pgs_prsice(tag) %>%
+  select(id, pgs = {{thresh_name}})
+regression_df <- inner_join(ukb_subsets$testing, pgs_df, by = "id") %>%
+  filter(!is.na(.data[[e]]), !is.na(.data[[y]])) %>%
+  mutate(pgs_bin = cut(pgs, quantile(pgs, seq(0, 1, length.out = 11)), 
+                       include.lowest = TRUE, labels = paste0("Q", 1:10)))
+```
+
+```{r}
+regression_df %>%
+  ggplot(aes(x = bmi, y = hscrp_log)) +
+  geom_smooth(method = "gam", formula = y ~ rms::rcs(x, 5)) +
+  labs(x = e_clean,
+       y = y_clean)
+```
+
+```{r}
+for (tag in c("hscrp_log", "bmi_hscrp_log", "hscrp_log_vQTL", "hscrp_log_prset")) {
+  df <- read_table(paste0("../data/processed/pgs/", tag, ".all_score"), 
+                 show_col_types = FALSE)
+  print(head(df))
+}
+```
+
+```{r}
+pgs_test_main_res_df %>%
+  left_join(optimal_pgs_main_df, by = c("y", "pgs_type", "thresh_name")) %>%
+  filter(y == "hscrp_log") %>%
+  mutate(color = if_else(set == "validation", optimal, NA),
+         statistic = if_else(set == "testing" & optimal == FALSE, NA, statistic),
+         y = factor(y, levels = outcomes, labels = paste0(outcomes_clean, " set")),
+         set = factor(set, levels = ukb_subset_names, 
+                      labels = ukb_subset_names_clean),
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = thresh_name, y = statistic, color = color)) +
+  geom_bar(stat = "identity") +
+  scale_color_discrete(name = "Optimal", na.translate = FALSE) +
+  facet_wrap(vars(set), nrow = 1, scale = "free_y") +
+  labs(x = "", y = "PGS main effect z-statistic",
+       title = "Positive control: standard GWAS/main effects pipeline") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 0.9))
+```
+
+```{r, fig.width=5}
+all_pgs_test_res_df %>%
+  filter(set == "testing",
+         e == "bmi",
+         y == "hscrp_log") %>%
+  mutate(e = factor(e, levels = exposures, labels = exposures_clean),
+         y = factor(y, levels = outcomes, labels = outcomes_clean),
+         pgs_type = factor(pgs_type, levels = pgs_types, labels = pgs_types_clean),
+         set = factor(set, levels = names(ukb_subsets), 
+                      labels = paste0(str_to_title(names(ukb_subsets)), " set")),
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = pgs_type, y = statistic, fill = pgs_type)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, color = "gray") +
+  scale_fill_discrete(name = "PGS type") +
+  labs(x = "", y = "Interaction test z-statistic",
+       title = "PGSxE testing (testing set)") +
   theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
 ```
+
+```{r}
+quantile_lines_plt <- regression_df %>%
+  ggplot(aes(x = bmi, y = hscrp_log, group = pgs_bin, color = pgs_bin)) +
+  # ggplot(aes(x = {{e}}, y = {{y}}, group = pgs_bin, color = pgs_bin)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", formula = "y ~ x") +
+  scale_color_discrete(name = "PGS bin") +
+  coord_cartesian(xlim = quantile(regression_df[[e]], c(0.001, 0.999))) +
+  labs(x = e_clean,
+       y = y_clean)
+
+test_ey <- function(df, e, y, covars) {
+  lm_form_str <- paste0(y, " ~ ", e, " + ", paste(covars, collapse = " + "))
+  lm_fit <- lm(as.formula(lm_form_str), data = df)
+  lm_fit %>%
+    broom::tidy() %>%
+    filter(term == e)
+}
+
+quantile_effects_df <- regression_df %>%
+  nest(data = -pgs_bin) %>%
+  rowwise() %>%
+  mutate(ey_lm = test_ey(data, e, y, primary_covars)) %>%
+  select(-data) %>%
+  unnest(ey_lm)
+quantile_effects_plt <- quantile_effects_df %>%
+  select(pgs_bin, estimate) %>%
+  ggplot(aes(x = pgs_bin, y = estimate)) +
+  geom_point() +
+  labs(x = "PGS bin",
+       y = paste0(e_clean, " - ", y_clean, " effect size"))
+
+quantile_lines_plt + quantile_effects_plt
+
+quantile_effects_df %>%
+  arrange(pgs_bin) %>%
+  select(pgs_bin, estimate) %>%
+  mutate(factor_change = estimate / estimate[1])
+
+# q1_corr <- cor.test(~ hscrp_log + whr, data = filter(regression_df, pgs_bin == "Q1"))$estimate
+# q10_corr <- cor.test(~ hscrp_log + whr, data = filter(regression_df, pgs_bin == "Q10"))$estimate
+# 
+# print(paste0("WHR-log(hsCRP) correlation in lowest vs. highest decile: ",
+#              round(q1_corr, 2), " versus ", round(q10_corr, 2)))
+```
+
+```{r, fig.asp=1.4}
+all_pgs_test_res_df %>%
+  filter(set == "testing",
+         e == "bmi") %>%
+  mutate(e = factor(e, levels = exposures, labels = exposures_clean),
+         y = factor(y, levels = outcomes, labels = outcomes_clean),
+         pgs_type = factor(pgs_type, levels = pgs_types, labels = pgs_types_clean),
+         set = factor(set, levels = names(ukb_subsets), 
+                      labels = paste0(str_to_title(names(ukb_subsets)), " set")),
+         thresh_name = factor(thresh_name, 
+                              levels = threshold_names,
+                              labels = threshold_names_clean)) %>%
+  ggplot(aes(x = pgs_type, y = statistic, fill = pgs_type)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, color = "gray") +
+  scale_fill_discrete(name = "PGS type") +
+  facet_wrap(vars(y), ncol = 1, scale = "free_y") +
+  labs(x = "", y = "Interaction test z-statistic",
+       title = "iPGSxBMI results (testing set)") +
+  theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
+```
+
+```{r}
+ppgs_weights_df %>%
+  filter(e == "bmi",
+         y == "hscrp_log") %>%
+  unnest(pathway_fits) %>%
+  arrange(estimate) %>%
+  mutate(pathway = factor(pathway, levels = pathway, 
+                          labels = str_replace(pathway, "HALLMARK_", ""))) %>%
+  ggplot(aes(x = pathway, y = estimate)) +
+  geom_bar(stat = "identity") +
+  labs(x = "", y = "pPGSxBMI univariate effect size",
+       title = "Example pPGS optimization (validation set)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.9))
+```
+
+# Export PGS definitions
+
+```{r export-optimized-params}
+all_pgs_test_res_df %>%
+  mutate(threshold = threshold_vec[match(thresh_name, threshold_names)]) %>%
+  filter(pgs_type == "mpgs",
+         e == "bmi") %>%
+  distinct(tag, threshold) %>%
+  mutate(threshold = ifelse(threshold == 0.05, 0.005, threshold)) %>%  # REVISIT THIS *******
+  write_csv("../data/processed/pgs/optimized_mpgs_params.csv")
+
+all_pgs_test_res_df %>%
+  mutate(threshold = threshold_vec[match(thresh_name, threshold_names)]) %>%
+  filter(pgs_type == "ipgs",
+         e == "bmi") %>%
+  distinct(tag, threshold) %>%
+  write_csv("../data/processed/pgs/optimized_ipgs_params.csv")
+
+all_pgs_test_res_df %>%
+  mutate(threshold = threshold_vec[match(thresh_name, threshold_names)]) %>%
+  filter(pgs_type == "vpgs",
+         e == "bmi") %>%
+  distinct(tag, threshold) %>%
+  write_csv("../data/processed/pgs/optimized_vpgs_params.csv")
+
+all_pgs_test_res_df %>%
+  filter(pgs_type == "ppgs",
+         e == "bmi") %>%
+  distinct(tag, pathway_fits) %>%
+  unnest(pathway_fits) %>%
+  select(tag, pathway, estimate) %>%
+  pivot_wider(names_from = "pathway", values_from = "estimate") %>%
+  write_csv("../data/processed/pgs/optimized_ppgs_params.csv")
+```
+
+```{r exploration, eval = FALSE}
+e <- "whr"
+y <- "hscrp_log"
+tag <- "whr_hscrp_log"
+thresh_name <- "thresh0.01"
+covars <- NULL
+covars <- primary_covars
+covars <- c(primary_covars, paste0("bmi", "By", gPCs))
+
+pgs_df <- read_csv(paste0("../data/processed/pgs/", tag, "_all_pgs.csv"), 
+                   show_col_types = FALSE)
+pgs_df <- select(pgs_df, id, pgs = {{thresh_name}})
+
+set <- "training"
+regression_df <- inner_join(ukb_subsets[[set]], pgs_df, by = "id")
+lm_form_str <- paste0(y, " ~ pgs * ", e)
+if (!is.null(covars)) {
+  lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
+}
+lm_fit <- lm(as.formula(lm_form_str), data = regression_df %>% sample_n(70000))
+lm_fit %>%
+  broom::tidy() %>%
+  filter(term == paste0("pgs:", e))
+```
+

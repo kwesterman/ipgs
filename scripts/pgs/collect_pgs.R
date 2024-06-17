@@ -4,7 +4,7 @@ library(tidyverse)
 args <- commandArgs(trailingOnly = TRUE)
 tag <- args[1]
 
-prefix <- paste0("../data/processed/prs/", tag)
+prefix <- paste0("../data/processed/pgs/", tag)
 
 
 pt_range_df <- read_table(paste0(prefix, "_pt_range_list.txt"),
@@ -24,11 +24,11 @@ sum_chromosomes <- function(pattern) {
     summarise(score = sum(score))
 }
 
-prs_df <- map(pt_range_df$threshold, function(thresh) {
+pgs_df <- map(pt_range_df$threshold, function(thresh) {
   pattern <- paste0(prefix, "_chrCHR.", thresh, ".sscore")
   score_name <- paste0("thresh", thresh)
   sum_chromosomes(pattern) %>%
     rename(!! score_name := score)
 }) %>%
   reduce(~ inner_join(.x, .y, by = "id"))
-write_csv(prs_df, paste0(prefix, "_all_prs.csv"))
+write_csv(pgs_df, paste0(prefix, "_all_pgs.csv"))
