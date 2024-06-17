@@ -27,7 +27,7 @@ Rscript --vanilla vgwas/preprocess_vgwas.R ${phenoFile} ${pheno}
 
 
 # use quail to calculate integrated rank score
-Rscript ../opt/QUAIL/Step1_QUAIL_rank_score.R \
+Rscript ./QUAIL/Step1_QUAIL_rank_score.R \
 --pheno ../data/processed/vgwas/${pheno}_pheno.txt \
 --covar ../data/processed/vgwas/${pheno}_covars.txt \
 --output ../data/processed/vgwas/${pheno}_rankscore.txt \

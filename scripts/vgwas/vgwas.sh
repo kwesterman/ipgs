@@ -25,7 +25,7 @@ use R-4.1
 
 
 # Run QUAIL Step 2 – vGWAS 
-Rscript ../opt/QUAIL/Step2_QUAIL_vQTL_JEG.R \
+Rscript ./QUAIL/Step2_QUAIL_vQTL_JEG.R \
 --pheno ../data/processed/vgwas/${pheno}_pheno.txt \
 --pheno_rs ../data/processed/vgwas/${pheno}_rankscore.txt \
 --covar ../data/processed/vgwas/${pheno}_covars.txt \
