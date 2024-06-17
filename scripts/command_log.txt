@@ -42,6 +42,7 @@ for exp in bmi; do
         for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${exp}_${bm}; done
 done
 for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${bm}_vQTL; done
+### THIS NEEDS TO BE RERUN FOR BILIRUBON_DIR_LOG! ###
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.all_score" ../data/processed/pgs/
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.snp" ../data/processed/pgs/
