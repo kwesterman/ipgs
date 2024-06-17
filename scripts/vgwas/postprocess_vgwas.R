@@ -91,7 +91,7 @@ ss_df %>%
 
 ### Create Q-Q plot
  
-qq_dir <- paste0(dirname(filepath), "/qq_plotsca/")
+qq_dir <- paste0(dirname(filepath), "/qq_plots/")
 system(paste0("mkdir -p ", qq_dir))
 
 write(calc_lambda(ss_df$P), paste0(qq_dir, gsub("_merged|\\.tbl", "_lambda", basename(filepath))))
