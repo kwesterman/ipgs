@@ -60,12 +60,20 @@ git clone https://github.com/qlu-lab/QUAIL vgwas/QUAIL
 qsub -t 1-22 data_prep/prep_ukb_plinkset.sh 0.005
 
 # run vgwas with quail
-for bm in hba1c hscrp_log ldl_statinadj tg_log alt_log; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv ${bm}; done
-for bm in hba1c hscrp_log ldl_statinadj tg_log alt_log; do qsub vgwas/postprocess_vgwas.sh ${bm}; done
+declare -a ten_bm_arr=("hscrp_log" "hba1c" "ldl_statinadj" "tg_log" "alt_log" "ggt_log" "hdl" "alb" "lipA_log" "vitD")
+for bm in "${ten_bm_arr[@]}"; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv ${bm} ; done
+for bm in "${ten_bm_arr[@]}"; do qsub vgwas/postprocess_vgwas.sh ${bm} ; done
 
 # rsync
 for bm in ldl_statinadj tg_log alt_log ; do cp ../data/processed/vgwas/${bm}_* $ipgs/data/processed/vgwas/ ; done  \
 for bm in ldl_statinadj tg_log alt_log ; do cp ../data/processed/ldsc/${bm}_vQTL_ldscInput $ipgs/data/processed/ldsc/ ; done
 for bm in ldl_statinadj tg_log alt_log ; do cp ../data/processed/pgs/${bm}_vQTL_pgsInput $ipgs/data/processed/pgs/ ; done
 done
+
+## Run rest of traits
+declare -a rest_bm_arr=("apoA" "apoB_statinadj" "ast_log" "chol_statinadj" "creatinine" "cysC_log" "bilirubin_dir_log" "glu" "shbg" "bilirubin_tot_log")
+for bm in "${rest_bm_arr[@]}"; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv ${bm} ; done
+for bm in "${rest_bm_arr[@]}"; do qsub vgwas/postprocess_vgwas.sh ${bm} ; done
+
+
 
