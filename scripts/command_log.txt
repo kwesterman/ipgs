@@ -13,6 +13,9 @@ rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_phenos_unrelated.cs
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_phenos_panUKBB.csv" ../data/processed/
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_*_set.csv" ../data/processed/
 
+# Prep genetic data for vGWAS (stored in scratch folder)
+qsub -t 1-22 data_prep/prep_ukb_plinkset.sh 0.005
+
 # Genome-wide single-variant analyses
 first_bm_arr=("hscrp_log" "hba1c")
 five_bm_arr=("hscrp_log" "hba1c" "ldl_statinadj" "tg_log" "alt_log")
@@ -24,18 +27,13 @@ for bm in ${bm_arr[@]}; do qsub -t 1-22 gwas/run_gwas.sh $bm; done
 for exp in bmi; do
 	for bm in ${bm_arr[@]}; do qsub -t 1-22 gwis/run_gwis.sh $exp $bm; done
 done
-#for bm in ${bm_arr[@]}; do qsub -t 1-22 gwvs/run_gwvs.sh $bm; done
-
-##for bm in ${bm_arr[@]}; do 
-##	for chr in {1..22}; do 
-##		rsync -avP ../data/processed/gwis/whr_${bm}_chr${chr} ../data/processed/gwas/whr_${bm}_main_chr${chr} 
-##	done
-##done
+for bm in "${bm_arr[@]}"; do qsub vgwas/run_vgwas.sh 0.005 ../data/processed/ukb_training_set.csv $bm ; done
 
 for bm in ${bm_arr[@]}; do qsub gwas/postprocess_gwas.sh ${bm}; done
 for exp in bmi; do
 	for bm in ${bm_arr[@]}; do qsub gwis/postprocess_gwis.sh $exp $bm; done
 done
+for bm in "${bm_arr[@]}"; do qsub vgwas/postprocess_vgwas.sh $bm ; done
 
 # Generate and calculate PGS
 
@@ -96,12 +94,3 @@ for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}_prod; done
 for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}_main; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/prs/*all_prs.csv" ../data/processed/prs/
-
-### LDSC for whole-genome GxE estimates and genetic correlation
-##qsub post_gwis/prep_ldsc.sh
-##
-##for bm in hscrp_log hba1c; do qsub post_gwis/run_ldsc.sh whr_${bm} whr_${bm}_prod; done
-##
-##rsync -avP uger:"florez_ukb_projects/ukb-n3/data/processed/ldsc/*.log" ../data/processed/ldsc/
-
-
