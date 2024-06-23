@@ -1,46 +1,42 @@
 #!/bin/bash
 
 #$ -l h_vmem=80G
-#$ -l h_rt=6:00:00
+#$ -l h_rt=12:00:00
 #$ -o ../reports
+
 
 #$ -j y
 #$ -cwd
 
 
 
-MAF=$1
-phenoFile=$2
-pheno=$3
+CHR=$SGE_TASK_ID
+
+pheno=$1
+
+
+
+MAF=0.005
+vgwas_dir=../data/processed/vgwas
+scratch=/broad/hptmp/gervis
+
+fn_prefix=${vgwas_dir}/${pheno}
+
 
 
 source /broad/software/scripts/useuse
 use R-4.1
 
 
-mkdir -p ../reports
+
+# Run QUAIL Step 2 – vGWAS 
+Rscript ./QUAIL/Step2_QUAIL_vQTL_JEG.R \
+--pheno ${fn_prefix}_pheno.txt \
+--pheno_rs ${fn_prefix}_rankscore.txt \
+--covar ${fn_prefix}_covars.txt \
+--geno ${scratch}/plinkset/chr${CHR}_sel_maf${MAF} \
+--output ${fn_prefix}_chr${CHR} \
+--plink_path ../opt/plink2
 
 
-
-# prep pheno & covar file for quail
-Rscript --vanilla vgwas/preprocess_vgwas.R ${phenoFile} ${pheno} 
-
-
-# use quail to calculate integrated rank score
-Rscript ./QUAIL/Step1_QUAIL_rank_score.R \
---pheno ../data/processed/vgwas/${pheno}_pheno.txt \
---covar ../data/processed/vgwas/${pheno}_covars.txt \
---output ../data/processed/vgwas/${pheno}_rankscore.txt \
---num_levels 2000 \
---num_cores 5
-
-
-
-# Run Step 2 as array
-use UGER
-qsub -t 1-22 vgwas/vgwas.sh ${MAF} ${pheno} 
-
-
-
-#EOF
-
+## EOF

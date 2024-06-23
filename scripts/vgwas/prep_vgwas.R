@@ -6,8 +6,8 @@ library(data.table)
 
 # system arguments
 args = commandArgs(trailingOnly=TRUE)
-phenoFile=args[1]
-phenoName= args[2]
+phenoName= args[1]
+phenoFile=args[2]
 
 covars=c("sex", "age", "age_squared", "ageBySex", "gPC1", "gPC2", "gPC3", "gPC4", "gPC5", "gPC6", "gPC7", "gPC8", "gPC9", "gPC10")
 print(covars)
