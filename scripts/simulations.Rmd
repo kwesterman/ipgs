@@ -5,7 +5,8 @@ title: "Simulations for iPGS proof-of-concept study"
 
 ```{r setup, include=F}
 knitr::opts_chunk$set(echo = F, message = F, warning = F, 
-                      dpi = 150, fig.path = "../output/simulations/")
+                      dpi = 150, fig.path = "../output/simulations/",
+                      cache.path = "../cache/simulations/")
 suppressMessages(silent <- lapply(
   c("knitr", "kableExtra", "tidyverse", "patchwork"), 
   library, character.only = TRUE))
@@ -25,98 +26,148 @@ Then, for each scenario (details below)...
 2. Simulate one environment E and P phenotypes Y (1000 for type I error simulations, 200 for power simulations) with effect sizes based on overall specified variance explained:
   * $E \sim N(0, 1)$
   * $beta_E \sim sqrt(Var_{E,tot})$
-  * $beta_{G,m} \sim N(0, sqrt(Var_{G,tot} / M))$
-  * $beta_{GxE,m} \sim N(0, sqrt(Var_{GxE,tot} / M))$
-  * $Y_i = \beta_EE_i + \beta_G^T\mathbf{G_i} + \beta_{GxE}^TE_i\mathbf{G_i} + \epsilon_i$, where $\epsilon_i \sim N(0, sqrt(1 - Var_{E,tot} - Var_{G,tot} - Var_{GxE,tot}))$
+  * $beta_{G,m} \sim N(0, Var_{G,tot} / M)$
+  * $beta_{GxE,m} \sim N(0, Var_{GxE,tot} / M)$
+  * $Y_i = \beta_EE_i + \beta_G^T\mathbf{G_i} + \beta_{GxE}^TE_i\mathbf{G_i} + \epsilon_i$, where $\epsilon_i \sim N(0, \sigma^2)$ and $\sigma^2 = 1 - Var_{E,tot} - Var_{G,tot} - Var_{GxE,tot}$
 
-Then, for each combination of scenario and phenotype...
+Then, for each combination of scenario and phenotype index...
 
-3. Test associations for each variant using interaction (genome-wide interaction study [GWIS]) and main effect (genome-wide association study [GWAS]) models, in the training set (70%):
-  * $Y_i \sim \beta_0 + \beta_EE_i + \beta_{G}G_i + \beta_{GxE}G_iE_i$, with $\beta_{GxE}$ being the effect of interest
-  * $Y_i \sim \beta_0 + \beta_{G}G_i$, with $\beta_{G}$ being the effect of interest
+3. Test associations for each variant using main effect (genome-wide association study [GWAS]), interaction (genome-wide interaction study [iGWAS]), and variance (genome-wide variance study [vGWAS]) models, in the training set (70%):
+  * GWAS: $Y_i \sim \beta_0 + \beta_{G}G_i$, with $\beta_{G}$ being the effect of interest
+  * iGWAS: $Y_i \sim \beta_0 + \beta_EE_i + \beta_{G}G_i + \beta_{GxE}G_iE_i$, with $\beta_{GxE}$ being the effect of interest
+  * vGWAS: see Miao et al. (2022) for details on generating $\beta_{V}$
 4. Get PGS weights:
   * For now, this will use a trivial strategy of simply pulling variant-specific effect sizes from the association tests without shrinkage.
-  * $\beta_{iPGS,m} = \beta_{GWIS,m}$
-  * $\beta_{PGS,m} = \beta_{GWAS,m}$
+  * $\beta_{mPGS,m} = \beta_{G,m}$
+  * $\beta_{iPGS,m} = \beta_{GxE,m}$
+  * $\beta_{vPGS,m} = \beta_{V,m}$
 5. Calculate PGS:
+  * $PGS_i = \mathbf{G_i^T}\mathbf{\beta_{mPGS}}$
   * $iPGS_i = \mathbf{G_i^T}\mathbf{\beta_{iPGS}}$
-  * $PGS_i = \mathbf{G_i^T}\mathbf{\beta_{PGS}}$
+  * $vPGS_i = \mathbf{G_i^T}\mathbf{\beta_{vPGS}}$
 6. Test PGS in the testing set (30%):
-  * $Y_i \sim \beta_0 + \beta_EE_i + \beta_{iPGS}iPGS_i + \beta_{iPGSxE}iPGS_iE_i$
   * $Y_i \sim \beta_0 + \beta_EE_i + \beta_{PGS}PGS_i + \beta_{PGSxE}PGS_iE_i$
+for each PGS type.
   
 Variables to tune:
 
 * E main effect (total variance)
-  - Between 0 and 10%
+  - 0 or 10%
 * G main effect (total variance)
-  - Between 0 and 10%
+  - 0 or 10%
 * GxE effect (total variance)
   - Between 0 and 5%
 * Distribution of Y
 * Measurement error in E
-  - ICC: {50%, 75%, 100%}
+  - ICC: {50%, 100%}
 * PRS calculation strategy
   - PGS
   - iPGS
-  - rPGS
   - vPGS
 
 ```{r setup-sims}
-power_scenario_df <- expand_grid(
+make_tag <- function(df) {
+  df %>%
+    mutate(tag = paste0("e", e_var_tot, "_g", g_var_tot, "_gxe", gxe_var_tot,
+                        "_edistr_", e_distr, "_eicc", e_icc))
+}
+
+base_power_scenario_df <- expand_grid(
   e_var_tot = c(0, 0.1),
   g_var_tot = c(0, 0.1),
-  gxe_var_tot = seq(0, 0.2, 0.05),
-  prob_nonzero = 1,
-  n_sim = 200
+  gxe_var_tot = seq(0, 0.1, 0.02),
+  e_distr = "normal",
+  e_icc = 1,
+  n_sim = 250
 ) %>%
-  mutate(tag = paste0("e", e_var_tot, "_g", g_var_tot, "_gxe", gxe_var_tot))
+  make_tag()
 
-power_scenario_df %>%
+measurement_power_scenario_df <- base_power_scenario_df %>%
+  filter(e_var_tot == 0.1,
+         g_var_tot == 0.1) %>%
+  select(-e_icc) %>%
+  expand_grid(e_icc = c(0.1, 0.5, 1)) %>%
+  make_tag()
+
+edistr_power_scenario_df <- base_power_scenario_df %>%
+  filter(e_var_tot == 0.1,
+         g_var_tot == 0.1) %>%
+  select(-e_distr) %>%
+  expand_grid(e_distr = c("normal", "normal20", "gamma")) %>%
+  make_tag()
+
+full_power_scenario_df <- bind_rows(list(
+  base = base_power_scenario_df, 
+  measurement = measurement_power_scenario_df,
+  e_distr = edistr_power_scenario_df
+), .id = "subset")
+full_power_scenario_df %>%
+  distinct()  %>%
   write_csv("../data/processed/simulations/power_scenarios.csv")
-write(power_scenario_df$tags, "../data/processed/simulations/power_scenario_tags.txt")
+write(full_power_scenario_df$tag, "../data/processed/simulations/power_scenario_tags.txt")
 
 t1e_scenario_df <- expand_grid(
   e_var_tot = 0.1,
   g_var_tot = c(0, 0.1),
   gxe_var_tot = 0,
-  prob_nonzero = 1,
+  e_distr = "normal",
+  e_icc = 1,
   n_sim = 1000
 ) %>%
-  mutate(tag = paste0("e", e_var_tot, "_g", g_var_tot, "_gxe", gxe_var_tot))
+  make_tag()
 
 t1e_scenario_df %>%
   write_csv("../data/processed/simulations/t1e_scenarios.csv")
-write(t1e_scenario_df$tags, "../data/processed/simulations/t1e_scenario_tags.txt")
+write(t1e_scenario_df$tag, "../data/processed/simulations/t1e_scenario_tags.txt")
 
 
 # tags <- scenario_df$tag
 ```
 
+```{r testing, eval=F}
+tag <- "e0.1_g0.1_gxe0_edistr_normal20_eicc1"
+a <- read_csv(res_fn, show_col_types = FALSE) %>%
+    mutate(effect_type = if_else(grepl("e_test", term), "gxe", "main")) %>%
+  filter(pgs_type == "ipgs") %>%
+  select(effect_type, estimate, std.error)
+b <- bind_cols(filter(a, effect_type == "main") %>% select(estimate_main = estimate, std.error_main = std.error),
+               filter(a, effect_type == "gxe") %>% select(estimate_gxe = estimate, std.error_gxe = std.error))
+b %>%
+  ggplot(aes(x = estimate_main, y = estimate_gxe)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+
 ```{r summarize-sims}
 calc_summaries <- function(tag) {
   res_fn <- paste0("../data/processed/simulations/", tag, "/test_res.csv")
-  read_csv(res_fn) %>%
-    group_by(pgs_type) %>%
+  read_csv(res_fn, show_col_types = FALSE) %>%
+    mutate(effect_type = if_else(grepl("e_test", term), "gxe", "main")) %>%
+    group_by(pgs_type, effect_type) %>%
     summarise(n_sig = sum(p.value < 0.05),
               prop_sig = n_sig / n(),
               mean_effect = mean(estimate),
-              .groups = "drop")
+              sd_effect = sd(estimate),
+              .groups = "drop") %>% 
+    pivot_wider(names_from = "effect_type", 
+                values_from = c("n_sig", "prop_sig", "mean_effect", "sd_effect")) %>%
+    rename_with(~ gsub("_gxe", "", .))
 }
 
 t1e_scenario_res_df <- t1e_scenario_df %>%
   rowwise() %>%
   mutate(summ = list(calc_summaries(tag))) %>%
   unnest(summ) %>%
-  mutate(pgs_type = factor(pgs_type, levels = c("ipgs", "pgs"), 
-                           labels = c("iPGS", "PGS")))
+  mutate(pgs_type = factor(pgs_type, levels = c("mpgs", "ipgs", "vpgs"), 
+                           labels = c("mPGS", "iPGS", "vPGS")))
 
-power_scenario_res_df <- power_scenario_df %>%
+power_scenario_res_df <- full_power_scenario_df %>%
   rowwise() %>%
   mutate(summ = list(calc_summaries(tag))) %>%
   unnest(summ) %>%
-  mutate(pgs_type = factor(pgs_type, levels = c("ipgs", "pgs"), 
-                           labels = c("iPGS", "PGS")),
+  mutate(pgs_type = factor(pgs_type, levels = c("mpgs", "ipgs", "vpgs"), 
+                           labels = c("mPGS", "iPGS", "vPGS")),
          main_effects = gsub("_gxe.*", "", tag))
 ```
 
@@ -124,29 +175,176 @@ power_scenario_res_df <- power_scenario_df %>%
 
 ```{r t1e-summary}
 t1e_scenario_res_df %>%
-  mutate(g_var_tot = factor(g_var_tot)) %>%
-  ggplot(aes(x = g_var_tot, y = prop_sig)) +
+  mutate(se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
+         l95 = prop_sig - 1.96 * se,
+         u95 = prop_sig + 1.96 * se) %>%
+  ggplot(aes(x = pgs_type, y = prop_sig)) +
+  geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2, color = "gray") +
   geom_bar(stat = "identity") +
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "gray") +
-  facet_wrap(vars(pgs_type), nrow = 1) +
+  facet_wrap(vars(g_var_tot), nrow = 1,
+             labeller = label_bquote(Var["G,tot"] * ": " * .(g_var_tot))) +
   coord_cartesian(ylim = c(0, NA)) +
-  labs(x = expression(Var["G,tot"]),
+  labs(x = "",
        y = "False positive rate")
 ```
 
 # Power
 
+Assuming no measurement error in E:
+
 ```{r power-summary}
 power_scenario_res_df %>%
+  filter(subset == "base") %>%
+  mutate(se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
+         l95 = prop_sig - 1.96 * se,
+         u95 = prop_sig + 1.96 * se) %>%
   ggplot(aes(x = gxe_var_tot, y = prop_sig, 
              group = pgs_type, color = pgs_type)) +
   geom_point() +
+  geom_errorbar(aes(ymin = l95, ymax = u95), width = 0) +
   geom_line() + 
-  facet_wrap(vars(e_var_tot, g_var_tot), labeller = "label_both") +
+  facet_grid(rows = vars(e_var_tot), cols = vars(g_var_tot),
+             labeller = label_bquote(
+               rows = Var["E,tot"] * ": " * .(e_var_tot),
+               cols = Var["G,tot"] * ": " * .(g_var_tot)
+             )) +
   scale_color_discrete(name = "PGS type") +
   coord_cartesian(ylim = c(0, NA)) +
   labs(x = expression(Var["GxE,tot"]),
        y = "Statistical power")
+
+power_scenario_res_df %>%
+  filter(subset == "base") %>%
+  ggplot(aes(x = gxe_var_tot, y = mean_effect, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_effect - sd_effect, ymax = mean_effect + sd_effect), 
+                width = 0) +
+  geom_line() +
+  facet_grid(rows = vars(e_var_tot), cols = vars(g_var_tot),
+             labeller = label_bquote(
+               rows = Var["E,tot"] * ": " * .(e_var_tot),
+               cols = Var["G,tot"] * ": " * .(g_var_tot)
+             )) +
+  scale_color_discrete(name = "PGS type") +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Mean PGSxE effect estimate (across simulations)")
+
+power_scenario_res_df %>%
+  filter(subset == "base") %>%
+  ggplot(aes(x = gxe_var_tot, y = mean_effect_main, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_effect_main - sd_effect_main, 
+                    ymax = mean_effect_main + sd_effect_main), 
+                width = 0) +
+  geom_line() +
+  facet_grid(rows = vars(e_var_tot), cols = vars(g_var_tot),
+             labeller = label_bquote(
+               rows = Var["E,tot"] * ": " * .(e_var_tot),
+               cols = Var["G,tot"] * ": " * .(g_var_tot)
+             )) +
+  scale_color_discrete(name = "PGS type") +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Mean PGS main effect estimate (across simulations)")
+```
+
+Allowing for measurement error in E, setting total variance from E and G each to 0.1:
+
+```{r power-summary-measurement-error}
+power_scenario_res_df %>%
+  filter(subset == "measurement") %>%
+  ggplot(aes(x = gxe_var_tot, y = prop_sig, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_line() +
+  # facet_wrap(vars(e_icc), labeller = "label_both") +
+  facet_grid(cols = vars(e_icc),
+             labeller = label_bquote(
+               cols = ICC["E"] * ": " * .(e_icc)
+             )) +
+  scale_color_discrete(name = "PGS type") +
+  coord_cartesian(ylim = c(0, NA)) +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Statistical power")
+
+power_scenario_res_df %>%
+  filter(subset == "measurement") %>%
+  ggplot(aes(x = gxe_var_tot, y = mean_effect, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_effect - sd_effect, ymax = mean_effect + sd_effect), 
+                width = 0) +
+  geom_line() +
+  facet_grid(cols = vars(e_icc),
+             labeller = label_bquote(
+               cols = ICC["E"] * ": " * .(e_icc)
+             )) +
+  scale_color_discrete(name = "PGS type") +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Mean PGSxE effect estimate (across simulations)")
+
+power_scenario_res_df %>%
+  filter(subset == "measurement") %>%
+  ggplot(aes(x = gxe_var_tot, y = mean_effect_main, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_effect_main - sd_effect_main, 
+                    ymax = mean_effect_main + sd_effect_main), 
+                width = 0) +
+  geom_line() +
+  facet_grid(cols = vars(e_icc),
+             labeller = label_bquote(
+               cols = ICC["E"] * ": " * .(e_icc)
+             )) +
+  scale_color_discrete(name = "PGS type") +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Mean PGS main effect estimate (across simulations)")
+```
+
+Allowing for different distributions for E, setting total variance from E and G each to 0.1:
+
+```{r power-summary-e-distribution}
+power_scenario_res_df %>%
+  filter(subset == "e_distr") %>%
+  ggplot(aes(x = gxe_var_tot, y = prop_sig, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_line() +
+  # facet_wrap(vars(e_icc), labeller = "label_both") +
+  facet_grid(cols = vars(e_distr)) +
+  scale_color_discrete(name = "PGS type") +
+  coord_cartesian(ylim = c(0, NA)) +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Statistical power")
+
+power_scenario_res_df %>%
+  filter(subset == "e_distr") %>%
+  ggplot(aes(x = gxe_var_tot, y = mean_effect, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_effect - sd_effect, ymax = mean_effect + sd_effect), 
+                width = 0) +
+  geom_line() +
+  facet_grid(cols = vars(e_distr)) +
+  scale_color_discrete(name = "PGS type") +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Mean PGSxE effect estimate (across simulations)")
+
+power_scenario_res_df %>%
+  filter(subset == "e_distr") %>%
+  ggplot(aes(x = gxe_var_tot, y = mean_effect_main, 
+             group = pgs_type, color = pgs_type)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_effect_main - sd_effect_main, 
+                    ymax = mean_effect_main + sd_effect_main), 
+                width = 0) +
+  geom_line() +
+  facet_grid(cols = vars(e_distr)) +
+  scale_color_discrete(name = "PGS type") +
+  labs(x = expression(Var["GxE,tot"]),
+       y = "Mean PGS main effect estimate (across simulations)")
 ```
 
 # Archive

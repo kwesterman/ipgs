@@ -1,8 +1,8 @@
 #!/bin/bash
 
 
-#$ -l h_vmem=10G
-#$ -l h_rt=4:00:00
+#$ -l h_vmem=2G
+#$ -l h_rt=12:00:00
 
 #$ -pe smp 16
 #$ -binding linear:16
