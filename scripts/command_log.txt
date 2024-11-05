@@ -1,9 +1,10 @@
 # Simulations
+rsync -ravP simulations uger:florez_ukb_projects/ipgs/scripts/
 rsync -avP ../data/processed/simulations/*scenario* uger:florez_ukb_projects/ipgs/data/processed/simulations/
 
 qsub simulations/run_sims.sh
 
-rsync -avP --include="*test_res.csv" --include="*/" --exclude="*" uger:florez_ukb_projects/ipgs/data/processed/simulations/ ../data/processed/simulations/
+rsync -avP --include="*test_res*.csv" --include="*/" --exclude="*" uger:florez_ukb_projects/ipgs/data/processed/simulations/ ../data/processed/simulations/
 
 # Phenotyping
 qsub data_prep/prep_ukb_phenos.sh
@@ -17,11 +18,7 @@ rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/ukb_*_set.csv" ../data/
 qsub -t 1-22 data_prep/prep_ukb_plinkset.sh 0.005
 
 # Genome-wide single-variant analyses
-first_bm_arr=("hscrp_log" "hba1c")
-five_bm_arr=("hscrp_log" "hba1c" "ldl_statinadj" "tg_log" "alt_log")
-ten_bm_arr=("hscrp_log" "hba1c" "ldl_statinadj" "tg_log" "alt_log" "ggt_log" "hdl" "alb" "lipA_log" "vitD")
-rest_bm_arr=("apoA"  "apoB_statinadj"  "ast_log"  "chol_statinadj"  "creatinine"  "cysC_log"  "bilirubin_dir_log" "glu"  "shbg"  "bilirubin_tot_log")
-bm_arr=("apoA"  "apoB_statinadj"  "ast_log"  "chol_statinadj"  "creatinine"  "cysC_log"  "bilirubin_dir_log" "glu"  "shbg"  "bilirubin_tot_log")
+bm_arr=("hscrp_log" "hba1c" "ldl_statinadj" "tg_log" "alt_log" "ggt_log" "hdl" "alb" "lipA_log" "vitD" "apoA"  "apoB_statinadj"  "ast_log"  "chol_statinadj"  "creatinine"  "cysC_log"  "bilirubin_dir_log" "glu"  "shbg"  "bilirubin_tot_log")
 
 for bm in ${bm_arr[@]}; do qsub -t 1-22 gwas/run_gwas.sh $bm; done
 for exp in bmi; do
@@ -35,6 +32,9 @@ for exp in bmi; do
 done
 for bm in "${bm_arr[@]}"; do qsub vgwas/postprocess_vgwas.sh $bm ; done
 
+qsub -t 1-22 gwas/run_gwas.sh bmi
+qsub gwas/postprocess_gwas.sh bmi
+
 # Generate and calculate PGS
 
 for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${bm}; done
@@ -42,7 +42,8 @@ for exp in bmi; do
         for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${exp}_${bm}; done
 done
 for bm in ${bm_arr[@]}; do qsub pgs/run_prsice.sh ${bm}_vQTL; done
-### THIS NEEDS TO BE RERUN FOR BILIRUBON_DIR_LOG! ###
+
+qsub pgs/run_prsice.sh bmi
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.all_score" ../data/processed/pgs/
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*.snp" ../data/processed/pgs/
@@ -56,7 +57,13 @@ for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh bmi_${bm} ipgs; done
 for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm}_vQTL vpgs; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*_pgs_weights_hg38.txt" ../data/processed/pgs/
+gsutil cp ../data/processed/pgs/optimized_*_params.csv gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/
 gsutil cp ../data/processed/pgs/*_pgs_weights_hg38.txt gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/
+gsutil cp ../data/processed/manuscript/all_ukb_pgs_test_res_df.rds gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/results/
+
+# Below command doesn't work due to AoU policy - instead, manually download all files from VM persistent disk: ~/workspaces/interactionpolygenicscores/results/
+# gsutil cp -r gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/results ../data/processed/manuscript/aou_results
+
 
 ############################
 

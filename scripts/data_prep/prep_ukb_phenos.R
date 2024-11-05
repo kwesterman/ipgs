@@ -106,12 +106,6 @@ saveRDS(covariate_df, "covariate_df.rds")
 
 ### Biomarkers -----------------------------------------------------------------
 
-# bm_fields <- c(
-#   alt = 30620, alb = 30600, apoB = 30640, hscrp = 30710, chol = 30690, glu = 30740, 
-#   hba1c = 30750, hdl = 30760, ldl = 30780, shbg = 30830, tg = 30870, vitD = 30890
-# ) %>%
-#   sapply(function(f) paste0("f.", f, ".0.0"))
-
 bm_fields <- c(
   alt = 30620, alb = 30600, apoA = 30630, apoB = 30640,
   ast = 30650, hscrp = 30710, chol = 30690, creatinine = 30700,
@@ -127,24 +121,29 @@ biomarker_df <- fread("/humgen/florezlab/UKBB_app27892/UKBB_app27892_download_BE
 
 # Collect medication data for biomarker adjustments
 drug_df <- base_pheno_df %>%
-  select(id=f.eid, contains("f.20003.0"), contains("f.6177.0"))
+  select(id=f.eid, contains("f.20003.0"), contains("f.6153.0.0"), contains("f.6177.0"))
 
 statin_ids <- c(
   1140861958, 1140888594, 1140888648, 1141146234, 1141192410, 1140861922, 1141146138
 )
 drug_df$num_statins <- 0
 for (statin in statin_ids) {
-  drug_df$num_statins <- drug_df$num_statins + rowSums(drug_df[, grep("20003", names(drug_df), value=TRUE)] == statin, na.rm=TRUE)
+  drug_df$num_statins <- drug_df$num_statins + 
+    rowSums(drug_df[, grep("20003", names(drug_df), value = TRUE)] == statin, na.rm = TRUE)
 }
-drug_df$bp_med <- rowSums(drug_df[, (
+drug_df$bp_med_sr_female <- rowSums(drug_df[, (
+  grep("6153", names(drug_df), value=TRUE)
+)] == 2, na.rm = TRUE)
+drug_df$bp_med_sr_male <- rowSums(drug_df[, (
   grep("6177", names(drug_df), value=TRUE)
-)] == 2, na.rm=TRUE)
+)] == 2, na.rm = TRUE)
+drug_df$bp_med <- pmax(drug_df$bp_med_sr_female, drug_df$bp_med_sr_male, na.rm = TRUE)
 drug_df <- select(drug_df, id, num_statins, bp_med)
 
 # Make medication-based biomarker adjustments
 biomarker_df <- left_join(biomarker_df, 
                           select(drug_df, id, num_statins),
-                          by="id")  # Not currently joining by instance!
+                          by = "id")  # Not currently joining by instance!
 statin_adj_bms <- c("chol", "ldl", "apoB")
 statin_adj_factors <- c(
   chol = 0.749,
@@ -173,9 +172,9 @@ saveRDS(basic_phenos_df, "basic_phenos_df.rds")
 medical_df <- fread("/humgen/florezlab/UKBB_app27892/UKBB_app27892_download_BEFORE_aug_2022/ukb38040.tab.gz",
                     data.table = FALSE, stringsAsFactors = FALSE) %>%
   select(id=f.eid, everything())
-medical_df$diabetes <- rowSums(medical_df[, grepl("f\\.2443\\.0\\.", names(medical_df)), drop=FALSE] == 1, na.rm=T) > 0
-medical_df$MI <- rowSums(medical_df[, grepl("f\\.6150\\.0\\.", names(medical_df)), drop=FALSE] == 1, na.rm=T) > 0
-medical_df$angina <- rowSums(medical_df[, grepl("f\\.6150\\.0\\.", names(medical_df)), drop=FALSE] == 2, na.rm=T) > 0
+medical_df$diabetes <- rowSums(medical_df[, grepl("f\\.2443\\.0\\.", names(medical_df)), drop = FALSE] == 1, na.rm = TRUE) > 0
+medical_df$MI <- rowSums(medical_df[, grepl("f\\.6150\\.0\\.", names(medical_df)), drop = FALSE] == 1, na.rm = TRUE) > 0
+medical_df$angina <- rowSums(medical_df[, grepl("f\\.6150\\.0\\.", names(medical_df)), drop = FALSE] == 2, na.rm = TRUE) > 0
 cirrhosis_codes <- c(paste0("K70", 2:4), "K717", paste0("K74", 0:6))
 cirrhosis_primary_ids <- c()
 for (f in grep("f\\.41202\\.0\\.", names(medical_df), value=T)) {
@@ -185,22 +184,22 @@ cirrhosis_secondary_ids <- c()
 for (f in grep("f\\.41204\\.0\\.", names(medical_df), value=T)) {
   cirrhosis_secondary_ids <- c(cirrhosis_secondary_ids, medical_df$id[medical_df[[f]] %in% cirrhosis_codes])
 }
-medical_df$pregnant <- rowSums(medical_df[, grepl("f\\.3140\\.0\\.", names(medical_df)), drop=FALSE] == 1, na.rm=T) > 0
+medical_df$pregnant <- rowSums(medical_df[, grepl("f\\.3140\\.0\\.", names(medical_df)), drop = FALSE] == 1, na.rm = TRUE) > 0
 cancer_tmp <- select(medical_df, 1, contains("f.40005."))
 cancer <- cancer_tmp[, 1:7] %>%
-  inner_join(select(ac_df, id, ac_date), by="id")  # Add assessment center dates
+  inner_join(select(ac_df, id, ac_date), by = "id")  # Add assessment center dates
 cancer$ac_date = as.Date(cancer$ac_date)
 for (i in 2:7) {
   x <- ifelse(abs(difftime(cancer[, i, drop=TRUE], cancer$ac_date, units="days")) <= 365, TRUE, FALSE)  # TRUE if cancer diagnosis within a year of assessment center visit
   cancer <- cbind(cancer, x)
 }
 cancer$cancer_within_1yearac = apply(cancer[, 9:14], 1, function(x) {
-  ifelse(any(x == TRUE, na.rm=TRUE), TRUE, FALSE)
+  ifelse(any(x == TRUE, na.rm = TRUE), TRUE, FALSE)
 })
 cancer[names(cancer) == "x"] <- NULL
 
 medical_df <- medical_df %>%
-  left_join(select(cancer, id, cancer_within_1yearac), by="id") %>%
+  left_join(select(cancer, id, cancer_within_1yearac), by = "id") %>%
   mutate(CHD = MI | angina,
          cirrhosis = id %in% c(cirrhosis_primary_ids, cirrhosis_secondary_ids)) %>%
   select(id, diabetes, CHD, cirrhosis, pregnant, cancer_within_1yearac)
@@ -226,7 +225,7 @@ saveRDS(gPC_df, "gPC_df.rds")
 # medical_df <- readRDS("medical_df.rds")
 # gPC_df <- readRDS("gPC_df.rds")
 
-withdrawn_consent <- scan("/humgen/florezlab/UKBB_app27892/w27892_2023_04_25.txt", 
+withdrawn_consent <- scan("/humgen/florezlab/UKBB_app27892/withdraw/withdraw27892_459_20240527.txt", 
                           what = character())
 
 phenos <- ac_df %>%
@@ -316,6 +315,28 @@ processed_phenos_panUKBB %>%
 
 set.seed(123)
 
+processed_phenos_unrelated <- read_csv("../data/processed/ukb_phenos_unrelated.csv") 
+
+training_ids <- sample(processed_phenos_unrelated$id, 
+                       round(0.5 * nrow(processed_phenos_unrelated)), 
+                       replace = FALSE)
+processed_phenos_unrelated %>%
+  filter(id %in% training_ids) %>%
+  write_csv("../data/processed/ukb_training_set.csv")
+
+validation_ids <- sample(setdiff(processed_phenos_unrelated$id, training_ids), 
+                         round(0.25 * nrow(processed_phenos_unrelated)), 
+                         replace = FALSE)
+processed_phenos_unrelated %>%
+  filter(id %in% validation_ids) %>%
+  write_csv("../data/processed/ukb_validation_set.csv")
+
+processed_phenos_unrelated %>%
+  filter(!(id %in% c(training_ids, validation_ids))) %>%
+  write_csv("../data/processed/ukb_testing_set.csv")
+
+set.seed(123)
+
 processed_phenos_EUR_unrelated <- read_csv("../data/processed/ukb_phenos_EUR_unrelated.csv") 
 
 training_ids <- sample(processed_phenos_EUR_unrelated$id, 
@@ -323,15 +344,15 @@ training_ids <- sample(processed_phenos_EUR_unrelated$id,
                        replace = FALSE)
 processed_phenos_EUR_unrelated %>%
   filter(id %in% training_ids) %>%
-  write_csv("../data/processed/ukb_training_set.csv")
+  write_csv("../data/processed/ukb_EUR_training_set.csv")
 
 validation_ids <- sample(setdiff(processed_phenos_EUR_unrelated$id, training_ids), 
                          round(0.25 * nrow(processed_phenos_EUR_unrelated)), 
                          replace = FALSE)
 processed_phenos_EUR_unrelated %>%
   filter(id %in% validation_ids) %>%
-  write_csv("../data/processed/ukb_validation_set.csv")
+  write_csv("../data/processed/ukb_EUR_validation_set.csv")
 
 processed_phenos_EUR_unrelated %>%
   filter(!(id %in% c(training_ids, validation_ids))) %>%
-  write_csv("../data/processed/ukb_testing_set.csv")
+  write_csv("../data/processed/ukb_EUR_testing_set.csv")

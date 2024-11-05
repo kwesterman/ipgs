@@ -3,7 +3,7 @@
 
 #$ -l os=RedHat7
 #$ -l h_vmem=5G
-#$ -l h_rt=12:00:00
+#$ -l h_rt=16:00:00
 
 #$ -pe smp 8
 #$ -binding linear:8
@@ -29,7 +29,6 @@ library(tidyverse)
 read_csv("../data/processed/ukb_training_set.csv") %>%
   select(where(~ !is.character(.x))) %>%
   write_csv("../data/processed/${pheno}_phenos_chr${chr}.tmp")
-EOF
 EOF
 
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-#$ -l h_vmem=2G
+#$ -l h_vmem=3G
 #$ -l h_rt=12:00:00
 
 #$ -pe smp 16

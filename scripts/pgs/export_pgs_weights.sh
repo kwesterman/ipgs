@@ -51,7 +51,8 @@ R --vanilla <<EOF
 library(tidyverse)
 unmapped_df <- read_tsv("${pgs_dir}/${tag}_pgs_snps_hg38.unmapped",
                    	skip = 1, col_names = c("CHR", "POS", "POS2")) %>%
-  mutate(CHR = as.integer(gsub("^chr", "", CHR)))
+  mutate(CHR = as.integer(gsub("^chr", "", CHR)),
+         POS = as.integer(POS))
 pgs_weights_df <- readRDS("tmp_${tag}_pgs_weights.rds") %>%
   anti_join(unmapped_df, by = c("CHR", "POS"))
 snp_df <- read_tsv("${pgs_dir}/${tag}_pgs_snps_hg38.txt",

@@ -3,7 +3,7 @@
 
 #$ -l os=RedHat7
 #$ -l h_vmem=10G
-#$ -l h_rt=6:00:00
+#$ -l h_rt=8:00:00
 
 
 #$ -pe smp 8

@@ -1,4 +1,5 @@
 library(tidyverse)
+library(splines)
 
 
 simulate_genotypes <- function(N, M, min_maf, max_maf, 
@@ -17,8 +18,36 @@ simulate_genotypes <- function(N, M, min_maf, max_maf,
 }
 
 
-simulate_scenario <- function(e_var_tot, g_var_tot, gxe_var_tot, 
-                              e_distr, e_icc,
+simulate_exposure <- function(N, e_distr, e_icc, ge_var_tot, g_mat, 
+                              sim_idx) {
+  if (e_distr == "normal") {
+    beta_ge_vec <- rep(sqrt(ge_var_tot / ncol(g_mat)), ncol(g_mat))
+    e_means <- as.vector(g_mat %*% beta_ge_vec)
+    var_e <- 1 - ge_var_tot
+    beta_e_em <- sqrt(e_icc)  # Such that true E explains amount of variance equal to ICC
+    var_em <- 1 - e_icc  # Such that measured E has total variance equal to 1
+    e_df <- tibble(
+      e = rnorm(N, e_means, sqrt(var_e)),
+      e_m = rnorm(N, beta_e_em * e, sqrt(var_em))
+    )
+  } else if (e_distr == "normal20") {
+    e_df <- tibble(
+      e = rnorm(N, 20, 1),
+      e_m = e
+    )
+  } else if (e_distr == "gamma") {
+    e_df <- tibble(
+      e = rgamma(N, shape = 1, rate = 1),
+      e_m = e
+    )
+  }
+  names(e_df) <- paste0(names(e_df), sim_idx)
+  e_df
+}
+
+
+simulate_scenario <- function(ge_var_tot, e_distr, e_icc,
+                              e_var_tot, g_var_tot, gxe_var_tot, nl_e,
                               n_sim, tag,
                               g_mat, maf_vec,
                               train_prop) {
@@ -33,45 +62,32 @@ simulate_scenario <- function(e_var_tot, g_var_tot, gxe_var_tot,
                    prob = c(1 - train_prop, train_prop))
   )
   
-  if (e_distr == "normal") {
-    beta_e_em <- sqrt(e_icc)  # Such that true E explains amount of variance equal to ICC
-    var_em <- 1 - e_icc  # Such that measured E has total variance equal to 1
-    sim_df <- sim_df %>%
-      mutate(
-        e = rnorm(N, 0, 1),
-        e_m = rnorm(N, beta_e_em * e, sqrt(var_em))
-      )
-  } else if (e_distr == "normal20") {
-    sim_df <- sim_df %>%
-      mutate(
-        e = rnorm(N, 20, 1),
-        e_m = e
-      )
-  } else if (e_distr == "gamma") {
-    sim_df <- sim_df %>%
-      mutate(
-        e = rgamma(N, shape = 1, rate = 1),
-        e_m = e
-      )
-  }
+  e_df <- map(seq(1, n_sim), function(idx) {
+    simulate_exposure(N, e_distr, e_icc, ge_var_tot, g_mat, idx)
+  }) %>%
+    bind_cols()
   
   beta_e <- sqrt(e_var_tot)
   
   g_mat_variances <- 2 * maf_vec * (1 - maf_vec)
   g_var_single <- g_var_tot / M
-  beta_g_vec_unscaled <- rnorm(M, 0, sqrt(g_var_single))  # Assumes all genotype variances are 1
-  beta_g_vec <- beta_g_vec_unscaled / sqrt(g_mat_variances)  # Scale because they're not
+  beta_g_var <- g_var_single / g_mat_variances
+  beta_g_vec <- rnorm(M, 0, sqrt(beta_g_var))
+  # beta_g_vec <- sample(c(-1, 1), M, replace = TRUE) * sqrt(beta_g_var)
 
   gxe_var_single <- gxe_var_tot / M
-  beta_gxe_vec_unscaled <- rnorm(M, 0, sqrt(gxe_var_single))
-  beta_gxe_vec <- beta_gxe_vec_unscaled / sqrt(g_mat_variances)
+  beta_gxe_var <- gxe_var_single / g_mat_variances
+  beta_gxe_vec <- rnorm(M, 0, sqrt(beta_gxe_var))
+  # beta_gxe_vec <- sample(c(-1, 1), M, replace = TRUE) * sqrt(beta_gxe_var)
   
   error_var <- 1 - e_var_tot - g_var_tot - gxe_var_tot
   
-  y_df <- map(seq(1, n_sim), function(pheno_idx) {
-    y_mean_vec <- sim_df$e * beta_e +
-      g_mat %*% beta_g_vec +
-      (g_mat * sim_df$e) %*% beta_gxe_vec
+  y_df <- map(seq(1, n_sim), function(idx) {
+    e <- e_df[[paste0("e", idx)]]
+    if (nl_e) e <- exp(e) / (exp(1) - (exp(1) - 1))  # Exponential function for nonlinearity, normalize to variance one
+    y_mean_vec <- g_mat %*% beta_g_vec +
+      e * beta_e +
+      (g_mat * e) %*% beta_gxe_vec
     rnorm(N, y_mean_vec, sqrt(error_var))
   }) %>%
     setNames(paste0("y", seq(1, n_sim))) %>%
@@ -79,7 +95,7 @@ simulate_scenario <- function(e_var_tot, g_var_tot, gxe_var_tot,
   
   target_dir <- paste0("../data/processed/simulations/", tag)
   system(paste0("mkdir -p ", target_dir))
-  bind_cols(sim_df, y_df) %>%
+  bind_cols(sim_df, e_df, y_df) %>%
     write_csv(paste0(target_dir, "/phenos.csv"))
 }
 
@@ -93,9 +109,11 @@ simulate_phenotypes <- function(scenario_df,
   
   scenario_df %>%
     rowwise() %>%
-    group_walk(~ simulate_scenario(.$e_var_tot, .$g_var_tot, .$gxe_var_tot, 
-                                   .$e_distr, .$e_icc,
-                                   .$n_sim, .$tag, g_mat, maf_vec, train_prop))
+    group_walk(~ simulate_scenario(.$ge_var_tot, .$e_distr, .$e_icc,
+                                   .$e_var_tot, .$g_var_tot, .$gxe_var_tot, 
+                                   .$nl_e,
+                                   .$n_sim, .$tag, 
+                                   g_mat, maf_vec, train_prop))
 }
 
 
@@ -143,10 +161,10 @@ test_vqtl <- function(g, e, y, df, covars = NULL) {
 }
 
 
-test_all_variants <- function(y_name, pheno_df, g_mat, regression_func) {
+test_all_variants <- function(e_name, y_name, pheno_df, g_mat, regression_func) {
   map(colnames(g_mat), function(g_name) {
     pheno_df$g <- g_mat[, g_name]
-    regression_func("g", "e_m", y_name,
+    regression_func("g", e_name, y_name,
                     filter(pheno_df, train == 1))
   }) %>%
     setNames(colnames(g_mat)) %>%
@@ -161,13 +179,16 @@ test_associations <- function(tag, g_mat, n_cores = 1) {
   pheno_df <- read_csv(paste0(target_dir, "/phenos.csv"),
                        show_col_types = FALSE)
   all_phenos <- grep("^y\\d*", names(pheno_df), value = TRUE)
+  sim_idx_vec <- gsub("y", "", all_phenos)
   
-  silent <- parallel::mclapply(all_phenos, function(y_name) {
-    test_all_variants(y_name, pheno_df, g_mat, test_g) %>%
+  silent <- parallel::mclapply(sim_idx_vec, function(idx) {
+    e_name <- paste0("e_m", idx)
+    y_name <- paste0("y", idx)
+    test_all_variants(e_name, y_name, pheno_df, g_mat, test_g) %>%
       write_csv(paste0(target_dir, "/gwas_res_", y_name, ".csv"))
-    test_all_variants(y_name, pheno_df, g_mat, test_g_by_e) %>%
+    test_all_variants(e_name, y_name, pheno_df, g_mat, test_g_by_e) %>%
       write_csv(paste0(target_dir, "/igwas_res_", y_name, ".csv"))
-    test_all_variants(y_name, pheno_df, g_mat, test_vqtl) %>%
+    test_all_variants(e_name, y_name, pheno_df, g_mat, test_vqtl) %>%
       write_csv(paste0(target_dir, "/vgwas_res_", y_name, ".csv"))
   }, mc.cores = n_cores)
 }
@@ -208,8 +229,12 @@ calculate_pgs <- function(tag, g_mat) {
   pheno_df <- read_csv(paste0(target_dir, "/phenos.csv"),
                        show_col_types = FALSE)
   all_phenos <- grep("^y\\d*", names(pheno_df), value = TRUE)
+  sim_idx_vec <- gsub("y", "", all_phenos)
   
-  walk(all_phenos, function(y_name) {
+  walk(sim_idx_vec, function(idx) {
+    e_name <- paste0("e", idx)
+    e_m_name <- paste0("e_m", idx)
+    y_name <- paste0("y", idx)
     mpgs_weights_df <- read_csv(paste0(target_dir, "/mpgs_weights_", y_name, ".csv"),
                                 show_col_types = FALSE)
     pheno_df$mpgs <- drop(g_mat[, mpgs_weights_df$g] %*% mpgs_weights_df$beta)
@@ -220,7 +245,7 @@ calculate_pgs <- function(tag, g_mat) {
                                 show_col_types = FALSE)
     pheno_df$vpgs <- drop(g_mat[, vpgs_weights_df$g] %*% vpgs_weights_df$beta)
     pheno_df %>%
-      select(id, train, e, e_m, y = {{ y_name }}, mpgs, ipgs, vpgs) %>%
+      select(id, train, e = {{ e_name }}, e_m = {{ e_m_name }}, y = {{ y_name }}, mpgs, ipgs, vpgs) %>%
       write_csv(paste0(target_dir, "/all_pgs_", y_name, ".csv"))
   })
 }
@@ -234,7 +259,8 @@ test_pgs <- function(tag, g_mat) {
                        show_col_types = FALSE)
   all_phenos <- grep("^y\\d*", names(pheno_df), value = TRUE)
   
-  test_pgs_by_e <- function(pgs_type, e, y, covars = NULL) {
+  test_pgs_by_e <- function(pgs_type, e, y, covars = NULL, 
+                            test_nl_e = FALSE, robust_SE = FALSE) {
     regression_df <- read_csv(paste0(target_dir, "/all_pgs_", y, ".csv"),
                               show_col_types = FALSE) %>%
       rename(e_test = {{ e }})
@@ -242,10 +268,14 @@ test_pgs <- function(tag, g_mat) {
     if (!is.null(covars)) {
       lm_form_str <- paste0(lm_form_str, " + ", paste(covars, collapse = " + "))
     }
-    lm(as.formula(lm_form_str), data = filter(regression_df, train == 0)) %>%
+    if (test_nl_e) lm_form_str <- paste0(lm_form_str, " + ns(e_test, df = 10)")
+    lm_fit <- lm(as.formula(lm_form_str), data = filter(regression_df, train == 0)) 
+    if (robust_SE) {
+      lm_fit <- lmtest::coeftest(lm_fit, vcov = sandwich::vcovHC, type = "HC0")
+    }
+    lm_fit %>%
       broom::tidy() %>%
       filter(grepl(pgs_type, term))
-      # filter(term == paste0(pgs_type, ":e_test"))
   }
   
   pgs_types <- c("mpgs", "ipgs", "vpgs")
@@ -259,4 +289,26 @@ test_pgs <- function(tag, g_mat) {
     bind_rows()
   sim_res_df %>%
     write_csv(paste0(target_dir, "/test_res.csv"))
+  
+  sim_res_df <- map(all_phenos, function(y_name) {
+    map(pgs_types, function(pgs_type) {
+      test_pgs_by_e(pgs_type, "e_m", y_name, test_nl_e = TRUE)
+    }) %>%
+      setNames(pgs_types) %>%
+      bind_rows(.id = "pgs_type")
+  }) %>%
+    bind_rows()
+  sim_res_df %>%
+    write_csv(paste0(target_dir, "/test_res_nlE.csv"))
+  
+  sim_res_df <- map(all_phenos, function(y_name) {
+    map(pgs_types, function(pgs_type) {
+      test_pgs_by_e(pgs_type, "e_m", y_name, robust_SE = TRUE)
+    }) %>%
+      setNames(pgs_types) %>%
+      bind_rows(.id = "pgs_type")
+  }) %>%
+    bind_rows()
+  sim_res_df %>%
+    write_csv(paste0(target_dir, "/test_res_robustSE.csv"))
 }
