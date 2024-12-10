@@ -59,43 +59,8 @@ for bm in ${bm_arr[@]}; do pgs/export_pgs_weights.sh ${bm}_vQTL vpgs; done
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*_pgs_weights_hg38.txt" ../data/processed/pgs/
 gsutil cp ../data/processed/pgs/optimized_*_params.csv gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/
 gsutil cp ../data/processed/pgs/*_pgs_weights_hg38.txt gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/
+gsutil cp ../data/processed/pgs/jpgs_weights_df.csv gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/
 gsutil cp ../data/processed/manuscript/all_ukb_pgs_test_res_df.rds gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/results/
 
 # Below command doesn't work due to AoU policy - instead, manually download all files from VM persistent disk: ~/workspaces/interactionpolygenicscores/results/
 # gsutil cp -r gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/results ../data/processed/manuscript/aou_results
-
-
-############################
-
-## Old PGS generation
-##for bm in ${bm_arr[@]}; do qsub pgs/clump.sh ${bm}; done
-##for exp in bmi whr; do
-##	for bm in ${bm_arr[@]}; do qsub pgs/clump.sh ${exp}_${bm}; done
-##done
-##for bm in ${bm_arr[@]}; do qsub pgs/clump.sh ${bm}_vQTL; done
-##
-##for bm in ${bm_arr[@]}; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}; done
-##for exp in bmi whr; do
-##        for bm in ${bm_arr[@]}; do qsub -t 1-22 pgs/calculate_pgs.sh ${exp}_${bm}; done
-##done
-##for bm in ${bm_arr[@]}; do qsub -t 1-22 pgs/calculate_pgs.sh ${bm}_vQTL; done
-##
-##
-##for bm in ${bm_arr[@]}; do qsub pgs/collect_pgs.sh ${bm}; done
-##for exp in bmi whr; do
-##        for bm in ${bm_arr[@]}; do qsub pgs/collect_pgs.sh ${exp}_${bm}; done
-##done
-##for bm in ${bm_arr[@]}; do qsub pgs/collect_pgs.sh ${bm}_vQTL; done
-##
-##rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/pgs/*all_pgs.csv" ../data/processed/pgs/
-
-
-for bm in ${bm_arr[@]}; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}; done
-for bm in ${bm_arr[@]}; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_prod; done
-for bm in ${bm_arr[@]}; do qsub -t 1-22 prs/calculate_prs.sh whr_${bm}_main; done
-
-for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}; done
-for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}_prod; done
-for bm in ${bm_arr[@]}; do qsub prs/collect_prs.sh whr_${bm}_main; done
-
-rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/prs/*all_prs.csv" ../data/processed/prs/

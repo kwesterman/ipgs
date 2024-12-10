@@ -31,10 +31,3 @@ for chr in {1..22}; do
 done
 echo "Finding duplicate rsIDs in LD reference file..."
 cat ${ldref_dir}/ukb_20k_hg19.bim | cut -f2 | sort | uniq -d >> ${prsice_dir}/ukb_duplicate_snpids.txt
-
-
-# Download necessary files for PRSet
-
-wget https://ftp.ensembl.org/pub/release-75/gtf/homo_sapiens/Homo_sapiens.GRCh37.75.gtf.gz \
-	&& mv Homo_sapiens.GRCh37.75.gtf.gz ${prsice_dir}/
-# Also "manually" retrieve Homo_sapiens.GRCh37.75.gtf.gz from https://ftp.ensembl.org/pub/release-75/gtf/homo_sapiens/
