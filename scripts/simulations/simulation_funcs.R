@@ -30,16 +30,19 @@ simulate_exposure <- function(N, e_distr, e_icc, ge_var_tot, g_mat,
       e = rnorm(N, e_means, sqrt(var_e)),
       e_m = rnorm(N, beta_e_em * e, sqrt(var_em))
     )
-  } else if (e_distr == "normal20") {
+  } else if (e_distr == "normal10") {
     e_df <- tibble(
-      e = rnorm(N, 20, 1),
+      e = rnorm(N, 10, 1),
       e_m = e
     )
   } else if (e_distr == "gamma") {
+    beta_ge_vec <- rep(sqrt(ge_var_tot / ncol(g_mat)), ncol(g_mat))
+    gamma_mult <- exp(as.vector(g_mat %*% beta_ge_vec))
     e_df <- tibble(
-      e = rgamma(N, shape = 1, rate = 1),
-      e_m = e
-    )
+      e = rgamma(N, shape = 1, rate = 1) * gamma_mult
+    ) %>%
+      mutate(e = e / sd(e),
+             e_m = e)
   }
   names(e_df) <- paste0(names(e_df), sim_idx)
   e_df
@@ -70,24 +73,35 @@ simulate_scenario <- function(ge_var_tot, e_distr, e_icc,
   beta_e <- sqrt(e_var_tot)
   
   g_mat_variances <- 2 * maf_vec * (1 - maf_vec)
+  
   g_var_single <- g_var_tot / M
-  beta_g_var <- g_var_single / g_mat_variances
-  beta_g_vec <- rnorm(M, 0, sqrt(beta_g_var))
-  # beta_g_vec <- sample(c(-1, 1), M, replace = TRUE) * sqrt(beta_g_var)
+  beta_g_vars <- g_var_single / g_mat_variances
+  beta_g_vec <- rnorm(M, 0, sqrt(beta_g_vars))
+  # beta_g_vec <- sqrt(beta_g_vars)
+  # beta_g_vec <- sample(c(-1, 1), M, replace = TRUE) * sqrt(beta_g_vars)
 
   gxe_var_single <- gxe_var_tot / M
-  beta_gxe_var <- gxe_var_single / g_mat_variances
-  beta_gxe_vec <- rnorm(M, 0, sqrt(beta_gxe_var))
-  # beta_gxe_vec <- sample(c(-1, 1), M, replace = TRUE) * sqrt(beta_gxe_var)
+  beta_gxe_vars <- gxe_var_single / g_mat_variances
+  beta_gxe_vec <- rnorm(M, 0, sqrt(beta_gxe_vars))
+  # beta_gxe_vec <- sqrt(beta_gxe_vars)
+  # beta_gxe_vec <- sample(c(-1, 1), M, replace = TRUE) * sqrt(beta_gxe_vars)
   
   error_var <- 1 - e_var_tot - g_var_tot - gxe_var_tot
   
   y_df <- map(seq(1, n_sim), function(idx) {
     e <- e_df[[paste0("e", idx)]]
-    if (nl_e) e <- exp(e) / (exp(1) - (exp(1) - 1))  # Exponential function for nonlinearity, normalize to variance one
-    y_mean_vec <- g_mat %*% beta_g_vec +
-      e * beta_e +
-      (g_mat * e) %*% beta_gxe_vec
+    # if (nl_e) e <- exp(e) / (exp(1) - (exp(1) - 1))  # Exponential function for nonlinearity, normalize to variance one
+    # if (nl_e) e <- (e + e^2) / sqrt(3)  # Square for nonlinearity, normalize to mean zero, variance one
+    # if (nl_e) e <- as.vector(scale(e + e^2))  # Square for nonlinearity, normalize to mean zero, variance one
+    y_mean_vec <- g_mat %*% beta_g_vec
+    if (nl_e & e_distr == "normal") {
+      y_mean_vec <- y_mean_vec + sqrt(e + 10) * (beta_e / sd(sqrt(e + 10)))
+    } else if (nl_e & e_distr == "gamma") {
+      y_mean_vec <- y_mean_vec + sqrt(e) * (beta_e / sd(sqrt(e)))
+    } else {
+      y_mean_vec <- y_mean_vec + e * beta_e
+    }
+    y_mean_vec <- y_mean_vec + (g_mat * e) %*% beta_gxe_vec
     rnorm(N, y_mean_vec, sqrt(error_var))
   }) %>%
     setNames(paste0("y", seq(1, n_sim))) %>%
@@ -288,27 +302,27 @@ test_pgs <- function(tag, g_mat) {
   }) %>%
     bind_rows()
   sim_res_df %>%
-    write_csv(paste0(target_dir, "/test_res.csv"))
+    write_csv(paste0(target_dir, "/test_res.csv"  ))
   
-  sim_res_df <- map(all_phenos, function(y_name) {
-    map(pgs_types, function(pgs_type) {
-      test_pgs_by_e(pgs_type, "e_m", y_name, test_nl_e = TRUE)
-    }) %>%
-      setNames(pgs_types) %>%
-      bind_rows(.id = "pgs_type")
-  }) %>%
-    bind_rows()
-  sim_res_df %>%
-    write_csv(paste0(target_dir, "/test_res_nlE.csv"))
+  # sim_res_df <- map(all_phenos, function(y_name) {
+  #   map(pgs_types, function(pgs_type) {
+  #     test_pgs_by_e(pgs_type, "e_m", y_name, test_nl_e = TRUE)
+  #   }) %>%
+  #     setNames(pgs_types) %>%
+  #     bind_rows(.id = "pgs_type")
+  # }) %>%
+  #   bind_rows()
+  # sim_res_df %>%
+  #   write_csv(paste0(target_dir, "/test_res_nlE.csv"))
   
-  sim_res_df <- map(all_phenos, function(y_name) {
-    map(pgs_types, function(pgs_type) {
-      test_pgs_by_e(pgs_type, "e_m", y_name, robust_SE = TRUE)
-    }) %>%
-      setNames(pgs_types) %>%
-      bind_rows(.id = "pgs_type")
-  }) %>%
-    bind_rows()
-  sim_res_df %>%
-    write_csv(paste0(target_dir, "/test_res_robustSE.csv"))
+  # sim_res_df <- map(all_phenos, function(y_name) {
+  #   map(pgs_types, function(pgs_type) {
+  #     test_pgs_by_e(pgs_type, "e_m", y_name, robust_SE = TRUE)
+  #   }) %>%
+  #     setNames(pgs_types) %>%
+  #     bind_rows(.id = "pgs_type")
+  # }) %>%
+  #   bind_rows()
+  # sim_res_df %>%
+  #   write_csv(paste0(target_dir, "/test_res_robustSE.csv"))
 }

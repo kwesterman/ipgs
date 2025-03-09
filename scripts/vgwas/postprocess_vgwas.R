@@ -4,7 +4,8 @@ library(data.table)
 
 args <- commandArgs(trailingOnly = TRUE)
 filepath <- args[1]
-y <- args[2]
+pheno <- args[2]
+#tag <- args[3]
 
 vgwas_dir <- dirname(filepath)
 MAF <- 0.005
@@ -54,17 +55,16 @@ ss_cols <- c(
   EA = "A1", NEA = "A2",
   N = "N", P = "P", beta="BETA", SE="SE")
 
-high_qual_variants <- as.data.frame(read_tsv(paste0("../data/processed/ukb_geno_1to22_maf", MAF, "_info0.5.txt"), col_names=F, col_types="c"))$X3
+high_qual_variants <- read_tsv("../data/processed/ukb_rsIDs_maf0.005_info0.5.txt", col_names=F, col_types="c")[[1]]
 
 ss_df <- fread(filepath, stringsAsFactors=F, data.table=F) %>%
   select(all_of(ss_cols)) %>%
-  mutate(across(contains("P_"), ~ as.numeric(.))) %>%
+  mutate_at("P", ~ as.numeric(.)) %>%
   filter(SNP %in% high_qual_variants)
 
 
 ### Prepare files for downstream analysis
 
-beta_col = "BETA"
 pgs_dir <- paste0(vgwas_dir, "/../pgs")
 system(paste0("mkdir -p ", pgs_dir))
 ss_df %>%
@@ -74,7 +74,7 @@ ss_df %>%
   arrange(P) %>%
   slice(1) %>% 
   ungroup() %>% 
-  write_tsv(paste0(pgs_dir, "/", y, "_vQTL_pgsInput"))
+  write_tsv(paste0(pgs_dir, "/", pheno, "_vQTL_pgsInput"))
  
 
 ldsc_dir <- paste0(vgwas_dir, "/../ldsc")
@@ -85,7 +85,7 @@ ss_df %>%
   arrange(P) %>%
   slice(1) %>%
   ungroup() %>% 
-  write_tsv(paste0(ldsc_dir, "/", y, "_vQTL_ldscInput"))
+  write_tsv(paste0(ldsc_dir, "/", pheno, "_vQTL_ldscInput"))
 
 
 
@@ -102,7 +102,8 @@ dev.off()
 
 
 ### Delete geno file
-system(paste0("rm ../data/processed/", y, "_ukb_geno_1to22_maf", MAF, "_info0.5.txt"))
+#system(paste0("rm ../data/processed/", pheno, "_ukb_geno_1to22_maf", MAF, "_info0.5.txt"))
 
 
 ##EOF
+

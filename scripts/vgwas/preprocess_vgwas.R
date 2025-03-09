@@ -8,6 +8,7 @@ library(data.table)
 args = commandArgs(trailingOnly=TRUE)
 phenoFile=args[1]
 phenoName= args[2]
+#tag=args[3]
 
 covars=c("sex", "age", "age_squared", "ageBySex", "gPC1", "gPC2", "gPC3", "gPC4", "gPC5", "gPC6", "gPC7", "gPC8", "gPC9", "gPC10")
 print(covars)
@@ -30,5 +31,5 @@ phenos %>%
  fwrite(file=paste0("../data/processed/vgwas/", phenoName, "_covars.txt"), row.names=F, col.names=T, sep=' ')
 
 
-
 #EOF
+

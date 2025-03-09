@@ -97,7 +97,7 @@ ipgs_by_e_cartoon <- concept_sim_df %>%
 g_by_e_cartoon + ipgs_by_e_cartoon
 ```
 
-```{r pgs-main-versus-interaction-plot}
+```{r pgs-main-versus-interaction-plot, eval=F}
 pgs_main_by_e_plt <- concept_sim_df %>%
   mutate(ipgs = pmin(pmax(ipgs, 1), 5)) %>%
   ggplot(aes(x = e, y = y_ipgs_main, color = ipgs)) +
@@ -181,7 +181,9 @@ igwas_plt <- concept_sim_df %>%
                         labels = paste0("T", 1:3), include.lowest = TRUE)) %>%
   ggplot(aes(x = g, y = y_g, color = e)) +
   geom_boxplot(outlier.shape = NA) +
-  scale_color_brewer(palette = "Dark2", name = "E") +
+  scale_color_brewer(palette = "Greens", name = "E") +
+  scale_color_manual(values = RColorBrewer::brewer.pal(4, "Greens")[2:4], 
+                     name = "E") +
   labs(x = "G", y = "Y") +
   # coord_cartesian(ylim = quantile(concept_sim_df$y_ipgs_main, c(0.01, 0.99))) +
   theme(axis.ticks = element_blank(), axis.text.y = element_blank(),
@@ -239,7 +241,7 @@ ukb_panel + aou_panel + legend +
   plot_layout(widths = c(2, 2, 1))
 ```
 
-```{r effect-size-scatter-viz, fig.width=4}
+```{r effect-size-scatter-viz, fig.asp=0.4, fig.width=4}
 test_ey <- function(df, e, y) {
   lm_form_str <- paste0(y, " ~ ", e)
   lm_fit <- lm(as.formula(lm_form_str), data = df)
@@ -275,14 +277,17 @@ strat_concept_sim_df <- concept_sim_df %>%
                        labels = paste0("Q", 1:5),
                        include.lowest = TRUE))
 
+pgs_bin_colors <- RColorBrewer::brewer.pal(6, "Blues")[-1]
+
 weak_ipgs_by_e_plt <- strat_concept_sim_df %>%
   ggplot(aes(x = e, y = y_ipgs_weak, group = pgs_bin, color = pgs_bin)) +
-  geom_point(alpha = 0.2) +
+  # geom_point(alpha = 0.2) +
   geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) +
-  scale_color_brewer(
-    name = "PGS quantile",
-    palette = "Blues"
-  ) +
+  # scale_color_brewer(
+  #   name = "PGS quantile",
+  #   palette = "Blues"
+  # ) +
+  scale_color_manual(name = "PGS quantile", values = pgs_bin_colors) +
   labs(x = "Adiposity", y = "Cardiometabolic risk") +
   coord_cartesian(xlim = c(0.5, 5.5)) +
   theme(axis.ticks = element_blank(), axis.text = element_blank(),
@@ -290,12 +295,9 @@ weak_ipgs_by_e_plt <- strat_concept_sim_df %>%
 
 strong_ipgs_by_e_plt <- strat_concept_sim_df %>%
   ggplot(aes(x = e, y = y_ipgs_strong, group = pgs_bin, color = pgs_bin)) +
-  geom_point(alpha = 0.2) +
+  # geom_point(alpha = 0.2) +
   geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) +
-  scale_color_brewer(
-    name = "PGS quantile",
-    palette = "Blues"
-  ) +
+  scale_color_manual(name = "PGS quantile", values = pgs_bin_colors) +
   labs(x = "Adiposity", y = "Cardiometabolic risk") +
   coord_cartesian(xlim = c(0.5, 5.5)) +
   theme(axis.ticks = element_blank(), axis.text = element_blank(),
@@ -314,17 +316,6 @@ mpgs_panel + ipgs_panel + legend +
 ```
 
 ```{r replication-workflow-figure, fig.asp=0.3}
-concept_sim_df %>%
-  ggplot(aes(x = ipgs, y = y_ipgs)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method = "lm", formula = "y ~ x", se = FALSE) +
-  labs(x = "iPGS", y = "Phenotype") +
-  coord_cartesian(xlim = c(0.5, 5.5)) +
-  theme(axis.ticks = element_blank(), axis.text = element_blank(),
-        panel.grid = element_blank(),
-        legend.position = c(0.15, 0.75), 
-        legend.background = element_rect(linewidth = 0.2, color = "black"))
-
 set.seed(1)
 anc_spec_df <- tibble(
   anc = rep(c("A", "B", "C"), each = 3),

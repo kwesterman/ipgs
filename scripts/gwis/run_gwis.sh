@@ -53,6 +53,7 @@ singularity exec \
 	--covar-names ${covars} \
 	--delim , \
 	--missing-value NA \
+	--center 1 \
 	--cat-threshold 3 \
 	--maf 0.01 \
 	--robust 1 \

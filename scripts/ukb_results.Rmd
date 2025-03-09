@@ -418,7 +418,6 @@ vpgs_test_res_df %>%
   theme(axis.text.x = element_text(angle = 35, hjust = 0.9))
 ```
 
-## Joint PGS (combining all three)
 
 ```{r joint-pgs, cache=1, eval=F}
 train_jpgs <- function(e, y, set = "validation", covars = NULL) {
@@ -504,7 +503,6 @@ jpgs_test_res_df <- tibble(e = "bmi", y = outcomes) %>%
   unnest_wider(lm_fit, simplify = FALSE) %>%
   unnest(lm_res)
 ```
-
 ```{r plot-jpgs-weights, fig.asp=0.4, fig.width=8, eval=F}
 jpgs_test_res_df %>%
   select(y, relative_weights) %>%
@@ -566,7 +564,7 @@ all_pgs_test_plt_df %>%
   facet_wrap(vars(y), ncol = 4, scale = "fixed") +
   labs(x = "", y = "Interaction test z-statistic",
        title = "PGSxE testing (testing set)") +
-  coord_cartesian(ylim = c(-7, 15)) +
+  # coord_cartesian(ylim = c(-7, 15)) +
   theme(axis.text.x = element_text(angle = 20, hjust = 0.9))
 ```
 
@@ -656,6 +654,25 @@ Of the biomarkers tested, `r sum(bm_level_summary_df$any_nom)` had at least one 
 
 ## Sensitivity analyses
 
+```{r prep-bmi-pgs}
+pgs_bmi_main_res_df <- tibble(
+  thresh_name = threshold_names
+) %>%
+  rowwise() %>%
+  mutate(lm_fit = list(test_pgs_marginal("bmi", "bmi", "validation", thresh_name, primary_covars))) %>%
+  ungroup() %>%
+  unnest(lm_fit)
+pgs_bmi_opt_thresh <- pgs_bmi_main_res_df %>%
+  slice(which.max(abs(statistic))) %>%
+  pull(thresh_name)
+
+pgs_bmi_df <- read_pgs_prsice("bmi") %>%
+  select(id, pgs_bmi = {{pgs_bmi_opt_thresh}})
+
+ukb_subsets$testing <- ukb_subsets$testing %>%
+  inner_join(pgs_bmi_df, by = "id")
+```
+
 ```{r sensitivity-results, cache=1}
 sensitivity_test_res_df <- all_pgs_test_res_df %>%
   filter(set == "testing",
@@ -677,8 +694,10 @@ sensitivity_test_res_df <- all_pgs_test_res_df %>%
          lm_fit_pgsSq = list(test_pgs_gxe(e, y, tag, set, thresh_name, 
                                         c(primary_covars, paste0(e, "By", gPCs)),
                                         include_PGS_sq = TRUE)),
-         lm_fit_bmiPGS = list(test_pgs_gxe(e, y, "bmi", set, thresh_name, 
-                                           c(primary_covars, paste0(e, "By", gPCs))))) %>%
+         lm_fit_bmiPGS = list(test_pgs_gxe(e, y, "bmi", set, pgs_bmi_opt_thresh, 
+                                           c(primary_covars, paste0(e, "By", gPCs)))),
+         lm_fit_swap_bmi_for_bmiPGS = list(test_pgs_gxe("pgs_bmi", y, tag, set, thresh_name, 
+                                                        c(primary_covars, paste0(e, "By", gPCs))))) %>%
   ungroup()
 ```
 
@@ -690,7 +709,8 @@ sensitivity_test_plt_df <- bind_rows(list(
   with_mPGS = unnest(sensitivity_test_res_df, lm_fit_with_mPGS),
   eSq = unnest(sensitivity_test_res_df, lm_fit_eSq),
   pgsSq = unnest(sensitivity_test_res_df, lm_fit_pgsSq),
-  bmiPGS = unnest(sensitivity_test_res_df, lm_fit_bmiPGS)
+  bmiPGS = unnest(sensitivity_test_res_df, lm_fit_bmiPGS),
+  swap_bmi_for_bmiPGS = unnest(sensitivity_test_res_df, lm_fit_swap_bmi_for_bmiPGS)
 ), .id = "model") %>%
   filter(pgs_type == "ipgs") %>%
   select(e, y, estimate, statistic, p.value, model) %>%
@@ -732,6 +752,12 @@ sensitivity_test_plt_df %>%
   geom_point() +
   geom_abline(intercept = 0, slope = 1) +
   labs(x = "Primary model z-statistic", y = "mPGS-adjusted model z-statistic")
+
+sensitivity_test_plt_df %>%
+  ggplot(aes(x = statistic_primary, y = statistic_swap_bmi_for_bmiPGS)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) +
+  labs(x = "Primary model (PGS x BMI) z-statistic", y = "PGS x PGS_BMI model z-statistic")
 ```
 
 # Specific visualizations - BMI and log(ALT)
@@ -879,11 +905,11 @@ regression_df <- regression_df %>%
   select(-any_of("bmi_pgs")) %>%
   inner_join(bmi_pgs_df, by = "id")
 
-test_pgs_gxe(e, y, tag = "bmi", "testing", "Pt_0.05", primary_covars)
-test_pgs_gxe(e, y, tag = tag, "testing", thresh_name, primary_covars)
+# test_pgs_gxe(e, y, tag = "bmi", "testing", "Pt_0.05", primary_covars)
+# test_pgs_gxe(e, y, tag = tag, "testing", thresh_name, primary_covars)
 ```
 
-# Export PGS definitions
+# Export
 
 ```{r export-optimized-params}
 optimized_mpgs_param_df <- all_pgs_test_res_df %>%
@@ -924,7 +950,7 @@ optimized_vpgs_param_df %>%
 bind_rows(list(mPGS = optimized_mpgs_param_df, 
                iPGS = optimized_ipgs_param_df, 
                vPGS = optimized_vpgs_param_df),
-          .id = "type") %>% 
+          .id = "type") %>%
   mutate(y = outcomes_clean[match(y, outcomes)]) %>%
   select(y, threshold, type) %>%
   pivot_wider(names_from = "type", values_from = "threshold") %>%

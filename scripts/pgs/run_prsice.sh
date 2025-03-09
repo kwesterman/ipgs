@@ -42,7 +42,9 @@ Rscript ${prsice_dir}/PRSice.R --dir ${pgs_dir} \
         --beta \
         \
         --ld ${ld_ref_prefix} \
-        --bar-levels 5e-2,5e-3,5e-4,5e-5,5e-6,5e-7,5e-8 \
+	--clump-kb 250 \
+	--clump-r2 0.1 \
+        --bar-levels 5e-2,1e-2,5e-3,1e-3,5e-4,1e-4,5e-5,1e-5,5e-6,1e-6,5e-7,1e-7,5e-8 \
         --fastscore \
         --no-full \
         \
@@ -58,7 +60,3 @@ Rscript ${prsice_dir}/PRSice.R --dir ${pgs_dir} \
 	--seed 123 \
         --thread 8 \
         --memory 10Gb
-        ##--lower 5e-8 \
-        ##--upper 0.05 \
-        ##--interval 5e-3 \
-        #--extract PRSice.valid \
