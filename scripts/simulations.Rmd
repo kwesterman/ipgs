@@ -121,7 +121,7 @@ full_power_scenario_df <- bind_rows(list(
   measurement = measurement_power_scenario_df,
   e_distr = edistr_power_scenario_df
 ), .id = "subset")
-# full_power_scenario_df %>%
+
 edistr_power_scenario_df %>%
   distinct()  %>%
   write_csv("../data/processed/simulations/power_scenarios.csv")
@@ -145,9 +145,6 @@ t1e_scenario_df <- expand_grid(
 t1e_scenario_df %>%
   write_csv("../data/processed/simulations/t1e_scenarios.csv")
 write(t1e_scenario_df$tag, "../data/processed/simulations/t1e_scenario_tags.txt")
-
-
-# tags <- scenario_df$tag
 ```
 
 ```{r testing, eval=F}
@@ -287,7 +284,6 @@ t1e_estimates_plt <- t1e_scenario_res_df %>%
   geom_point(position = position_dodge(width = 0.2)) +
   geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper),
                 width = 0, position = position_dodge(width = 0.2)) +
-  # geom_bar(stat = "identity", position = position_dodge(width = 1)) +
   facet_grid(rows = vars(nl_e), cols = vars(ge_var_tot),
              labeller = label_bquote(
                rows = "Nonlinear E effect: " * .(as.character(nl_e)),
@@ -387,7 +383,6 @@ primary_effect_plt <- power_scenario_res_df %>%
              color = pgs_type, linetype = linetype)) +
   geom_point() +
   geom_hline(yintercept = 0, color = "gray") +
-  # geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0) +
   geom_line() +
   facet_grid(rows = vars(e_var_tot), cols = vars(g_var_tot),
              labeller = label_bquote(
@@ -401,7 +396,6 @@ primary_effect_plt <- power_scenario_res_df %>%
        y = "Mean PGS effect estimate\n(across simulations)")
 
 primary_pwr_plt
-# primary_effect_plt
 ```
 
 ### Exploring measurement error in E
@@ -419,7 +413,6 @@ measurement_pwr_plt <- power_scenario_res_df %>%
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0) +
   geom_line() +
-  # facet_wrap(vars(e_icc), labeller = "label_both") +
   facet_grid(cols = vars(e_icc),
              labeller = label_bquote(
                cols = ICC["E"] * ": " * .(e_icc)
@@ -431,38 +424,6 @@ measurement_pwr_plt <- power_scenario_res_df %>%
   theme(axis.text.x = element_text(angle = 25, hjust = 0.8))
 
 measurement_pwr_plt
-
-# power_scenario_res_df %>%
-#   filter(subset == "measurement") %>%
-#   select(gxe_var_tot, e_var_tot, g_var_tot, pgs_type, e_icc,
-#          mean_effect, sd_effect, mean_effect_main, sd_effect_main) %>%
-#   pivot_longer(cols = c(mean_effect, mean_effect_main), 
-#                names_to = "effect_type", 
-#                values_to = "mean_value") %>%
-#   pivot_longer(cols = c(sd_effect, sd_effect_main), 
-#                names_to = "sd_type", 
-#                values_to = "sd_value") %>%
-#   filter((effect_type == "mean_effect" & sd_type == "sd_effect") |
-#          (effect_type == "mean_effect_main" & sd_type == "sd_effect_main")) %>%
-#   mutate(linetype = if_else(effect_type == "mean_effect", "Interaction", "Main"),
-#          ci_lower = mean_value - 1.96 * sd_value,
-#          ci_upper = mean_value + 1.96 * sd_value) %>%
-#   ggplot(aes(x = gxe_var_tot, y = mean_value, 
-#              group = interaction(pgs_type, linetype), 
-#              color = pgs_type, linetype = linetype)) +
-#   geom_hline(yintercept = 0, color = "gray") +
-#   geom_point() +
-#   # geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0) +
-#   geom_line() +
-#   facet_grid(cols = vars(e_icc),
-#              labeller = label_bquote(
-#                cols = ICC["E"] * ": " * .(e_icc)
-#              )) +
-#   scale_color_discrete(name = "PGS type") +
-#   scale_linetype_manual(values = c("Interaction" = "solid", "Main" = "dashed"),
-#                         name = "Effect type") +
-#   labs(x = expression(Var["GxE,tot"]),
-#        y = "Mean PGS effect estimate\n(across simulations)")
 ```
 
 ### Exploring different distributions for E
@@ -484,7 +445,6 @@ e_distr_pwr_plt <- power_scenario_res_df %>%
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0) +
   geom_line() +
-  # facet_wrap(vars(e_icc), labeller = "label_both") +
   facet_grid(cols = vars(e_distr)) +
   scale_color_discrete(name = "PGS type") +
   coord_cartesian(ylim = c(0, NA)) +
@@ -493,38 +453,6 @@ e_distr_pwr_plt <- power_scenario_res_df %>%
   theme(axis.text.x = element_text(angle = 25, hjust = 0.8))
 
 e_distr_pwr_plt
-
-# power_scenario_res_df %>%
-#   filter(subset == "e_distr") %>%
-#   select(gxe_var_tot, e_var_tot, g_var_tot, pgs_type, e_distr,
-#          mean_effect, sd_effect, mean_effect_main, sd_effect_main) %>%
-#   pivot_longer(cols = c(mean_effect, mean_effect_main), 
-#                names_to = "effect_type", 
-#                values_to = "mean_value") %>%
-#   pivot_longer(cols = c(sd_effect, sd_effect_main), 
-#                names_to = "sd_type", 
-#                values_to = "sd_value") %>%
-#   filter((effect_type == "mean_effect" & sd_type == "sd_effect") |
-#          (effect_type == "mean_effect_main" & sd_type == "sd_effect_main")) %>%
-#   mutate(linetype = if_else(effect_type == "mean_effect", "Interaction", "Main"),
-#          ci_lower = mean_value - 1.96 * sd_value,
-#          ci_upper = mean_value + 1.96 * sd_value) %>%
-#   ggplot(aes(x = gxe_var_tot, y = mean_value, 
-#              group = interaction(pgs_type, linetype), 
-#              color = pgs_type, linetype = linetype)) +
-#   geom_hline(yintercept = 0, color = "gray") +
-#   geom_point() +
-#   # geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0) +
-#   geom_line() +
-#   facet_grid(cols = vars(e_distr),
-#              labeller = label_bquote(
-#                cols = "E distribution" * ": " * .(e_distr)
-#              )) +
-#   scale_color_discrete(name = "PGS type") +
-#   scale_linetype_manual(values = c("Interaction" = "solid", "Main" = "dashed"),
-#                         name = "Effect type") +
-#   labs(x = expression(Var["GxE,tot"]),
-#        y = "Mean PGS effect estimate\n(across simulations)")
 ```
 
 # Summary figure
