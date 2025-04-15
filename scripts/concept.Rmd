@@ -209,6 +209,22 @@ vgwas_plt <- concept_sim_df %>%
 gwas_plt + igwas_plt + vgwas_plt
 ```
 
+```{r optimization-viz, fig.width=4, fig.asp=0.4}
+tibble(
+  p_thresh = c("P<5e-8", "P<5e-7", "P<5e-6", "P<5e-5", "P<5e-4", "P<0.005", "P<0.05"),
+  z = c(5, 6, 5.5, 4.5, 3.5, 3.3, 3.2),
+  highlight = c(FALSE, TRUE, rep(FALSE, 5))
+) %>%
+  mutate(p_thresh = factor(p_thresh, levels = p_thresh)) %>%
+  ggplot(aes(x = p_thresh, y = z, color = highlight)) +
+  geom_bar(stat = "identity", fill = "gray", width = 0.8, linewidth = 1) +
+  scale_color_manual(values = c("gray", "#295F9A")) +
+  labs(x = "P-value threshold", y = expression(paste(beta[GxE] * " z-statistic"))) +
+  guides(color = "none") +
+  theme(panel.grid = element_blank())
+  # theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
 ```{r testing-set-slopes-viz, fig.asp=0.4}
 strat_concept_sim_df <- concept_sim_df %>%
   mutate(ipgs = pmin(pmax(ipgs, 1), 5),

@@ -62,6 +62,8 @@ gsutil cp ../data/processed/pgs/*_pgs_weights_hg38.txt gs://fc-secure-d88ec83d-c
 #gsutil cp ../data/processed/pgs/jpgs_weights_df.csv gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/pgs_weights/
 gsutil cp ../data/processed/manuscript/all_ukb_pgs_test_res_df.rds gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/results/
 
+cd ../data/processed/pgs && tar czvf ../../../output/manuscript/pgs_weights.tar.gz *_pgs_weights_hg38.txt
+
 # Below command doesn't work due to AoU policy - instead, manually download all files from VM persistent disk: ~/workspaces/interactionpolygenicscores/results/
 # gsutil cp -r gs://fc-secure-d88ec83d-c5e9-4ca4-8776-7b3f142893dc/results ../data/processed/manuscript/aou_results
 
@@ -74,3 +76,9 @@ rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/gwis/ldsc/*.log" ../dat
 
 # Run ANNOVAR to annotate PGS variants to genes
 for tag in bmi_alt_log bmi_ast_log; do pgs/run_annovar.sh ${tag}; done
+
+# Run MAGMA to get gene set enrichments
+for tag in bmi_alt_log; do qsub post_gwis/run_magma_gwis.sh ../data/processed/gwis/${tag}_magma_input ${tag}; done
+for tag in alt_log; do qsub post_gwis/run_magma_gwas.sh ../data/processed/gwas/${tag}_magma_input ${tag}; done
+
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/magma/*.gsa.out" ../data/processed/magma/

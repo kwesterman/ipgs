@@ -87,6 +87,10 @@ ss_df %>%
   ungroup() %>%
   write_tsv(paste0(ldsc_dir, "/", y, "_ldscInput"))
 
+if (y == "alt_log") {
+ write_tsv(ss_df, gsub("_merged", "_magma_input", filepath))
+}
+
 
 ### Create Q-Q plot
  
