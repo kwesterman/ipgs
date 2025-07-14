@@ -88,6 +88,39 @@ make_tag <- function(df) {
                          ))
 }
 
+
+base_t1e_scenario_df <- expand_grid(
+  ge_var_tot = 0,
+  e_distr = c("normal", "gamma", "normal10"),
+  e_icc = 1,
+  
+  e_var_tot = c(0, 0.1),
+  g_var_tot = c(0, 0.1),
+  gxe_var_tot = 0,
+  nl_e = FALSE
+) %>%
+  filter(e_var_tot == g_var_tot) %>%
+  make_tag()
+
+ge_nl_t1e_scenario_df <- base_t1e_scenario_df %>%
+  filter(e_var_tot == g_var_tot,
+         e_distr == "gamma") %>%
+  select(-ge_var_tot, -nl_e) %>%
+  expand_grid(ge_var_tot = c(0, 0.1),
+              nl_e = c(FALSE, TRUE)) %>%
+  make_tag()
+
+full_t1e_scenario_df <- bind_rows(list(
+  base = base_t1e_scenario_df, 
+  ge_nl = ge_nl_t1e_scenario_df
+), .id = "subset")
+
+full_t1e_scenario_df %>%
+  distinct() %>%
+  write_csv("../data/processed/simulations/t1e_scenarios.csv")
+write(full_t1e_scenario_df$tag, "../data/processed/simulations/t1e_scenario_tags.txt")
+
+
 base_power_scenario_df <- expand_grid(
   ge_var_tot = 0,
   e_distr = "normal",
@@ -96,9 +129,7 @@ base_power_scenario_df <- expand_grid(
   e_var_tot = c(0, 0.1),
   g_var_tot = c(0, 0.1),
   gxe_var_tot = seq(0, 0.025, 0.005),
-  nl_e = FALSE,
-  
-  n_sim = 250
+  nl_e = FALSE
 ) %>%
   make_tag()
 
@@ -122,29 +153,10 @@ full_power_scenario_df <- bind_rows(list(
   e_distr = edistr_power_scenario_df
 ), .id = "subset")
 
-edistr_power_scenario_df %>%
-  distinct()  %>%
+full_power_scenario_df %>%
+  distinct() %>%
   write_csv("../data/processed/simulations/power_scenarios.csv")
 write(full_power_scenario_df$tag, "../data/processed/simulations/power_scenario_tags.txt")
-
-t1e_scenario_df <- expand_grid(
-  ge_var_tot = c(0, 0.3),
-  e_distr = c("normal", "gamma"),
-  e_icc = 1,
-  
-  e_var_tot = c(0, 0.1),
-  g_var_tot = c(0, 0.1),
-  gxe_var_tot = 0,
-  nl_e = c(FALSE, TRUE),
-  
-  n_sim = 500
-) %>%
-  filter(e_var_tot == g_var_tot) %>%
-  make_tag()
-
-t1e_scenario_df %>%
-  write_csv("../data/processed/simulations/t1e_scenarios.csv")
-write(t1e_scenario_df$tag, "../data/processed/simulations/t1e_scenario_tags.txt")
 ```
 
 ```{r testing, eval=F}
