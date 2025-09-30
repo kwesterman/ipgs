@@ -1,10 +1,12 @@
 # Simulations
 rsync -ravP simulations uger:florez_ukb_projects/ipgs/scripts/
 rsync -avP ../data/processed/simulations/*scenario* uger:florez_ukb_projects/ipgs/data/processed/simulations/
+for f in {ls ../data/processed/simulations/*scenario*}; do gsutil cp $f gs://fc-7f4b61b6-f91b-4ff1-a88d-ee012aabc17a/data/
 
 qsub simulations/run_sims.sh
 
-rsync -avP --include="*test_res*.csv" --include="*/" --exclude="*" uger:florez_ukb_projects/ipgs/data/processed/simulations/ ../data/processed/simulations/
+rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/simulations/*res.csv" ../data/processed/simulations/
+#rsync -avP --include="*test_res*.csv" --include="*/" --exclude="*" uger:florez_ukb_projects/ipgs/data/processed/simulations/ ../data/processed/simulations/
 
 # Phenotyping
 qsub data_prep/prep_ukb_phenos.sh
@@ -78,7 +80,7 @@ rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/gwis/ldsc/*.log" ../dat
 for tag in bmi_alt_log bmi_ast_log; do pgs/run_annovar.sh ${tag}; done
 
 # Run MAGMA to get gene set enrichments
-for tag in bmi_alt_log; do qsub post_gwis/run_magma_gwis.sh ../data/processed/gwis/${tag}_magma_input ${tag}; done
-for tag in alt_log; do qsub post_gwis/run_magma_gwas.sh ../data/processed/gwas/${tag}_magma_input ${tag}; done
+for tag in bmi_alt_log bmi_hdl; do qsub post_gwis/run_magma_gwis.sh ../data/processed/gwis/${tag}_magma_input ${tag}; done
+for tag in alt_log hdl; do qsub post_gwis/run_magma_gwas.sh ../data/processed/gwas/${tag}_magma_input ${tag}; done
 
 rsync -avP uger:"florez_ukb_projects/ipgs/data/processed/magma/*.gsa.out" ../data/processed/magma/

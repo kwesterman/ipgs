@@ -9,7 +9,8 @@ simulate_genotypes <- function(N, M, min_maf, max_maf,
   
   g_mat <- sapply(mafs, function(maf) {
     rbinom(N, 2, maf)
-  }, simplify = TRUE)
+  }, simplify = TRUE) %>%
+    scale()
   colnames(g_mat) <- paste0("g", seq(1, M))
   
   saveRDS(g_mat, paste0(sim_dir, "/g_mat.rds"))
@@ -17,7 +18,7 @@ simulate_genotypes <- function(N, M, min_maf, max_maf,
 }
 
 
-simulate_exposure <- function(g_mat, dist_E = "normal", ge_var_tot = 0, icc = 1, seed = NULL){
+simulate_exposure <- function(g_mat, dist_E = "normal", sigma2_ge = 0, icc = 1, seed = NULL){
   if(!is.null(seed)) set.seed(seed)
   
   N <- nrow(g_mat)
@@ -27,30 +28,38 @@ simulate_exposure <- function(g_mat, dist_E = "normal", ge_var_tot = 0, icc = 1,
   
   pgs <- as.vector(scale(scale(g_mat) %*% rnorm(ncol(g_mat))))  # "Polygenic score" with variance=1 (scale to prevent MAF-dependent contribution)
   pgs_mat <- matrix(pgs, nrow = N, ncol = 1, byrow = FALSE)  # Same PGS for each simulation replicate
-  e_mat <- sqrt(1 - ge_var_tot) * e_mat + sqrt(ge_var_tot) * pgs_mat  # Add "PGS" effects based on G-E correlation
+  e_mat <- sqrt(1 - sigma2_ge) * e_mat + sqrt(sigma2_ge) * pgs_mat  # Add "PGS" effects based on G-E correlation
   
   noise <- matrix(rnorm(N), N, 1)    # Add any measurement error
   e_m_mat <- sqrt(icc) * e_mat + sqrt(1 - icc) * noise
   colnames(e_m_mat) <- "e_m1"
 
-  if (dist_E == "normal10") {
-    e_mat <- e_mat + 10
-    e_m_mat <- e_m_mat + 10
-  }
+
   
-  if (dist_E == "gamma") {  # Use copula approach to generate gamma-distributed exposure
+  if (grepl("^normal[0-9]+", dist_E)) {
+    mu <- as.numeric(gsub("normal", "", dist_E))
+    e_mat <- e_mat + mu
+    e_m_mat <- e_m_mat + mu
+  }  
+  else if (dist_E == "gamma") {  # Use copula approach to generate gamma-distributed exposure
     U <- pnorm(e_mat)  # Push through normal CDF
     e_mat <- qgamma(U, shape = 1, rate = 1)  # Generate marginal gamma using quantile function
     U_m <- pnorm(e_m_mat)
     e_m_mat <- qgamma(U_m, shape = 1, rate = 1)
+  }
+  else if (dist_E == "gamma2") {  # Use copula approach to generate gamma-distributed exposure
+    U <- pnorm(e_mat)  # Push through normal CDF
+    e_mat <- qgamma(U, shape = 4, rate = 2)  # Generate marginal gamma using quantile function
+    U_m <- pnorm(e_m_mat)
+    e_m_mat <- qgamma(U_m, shape = 4, rate = 2)
   }
   
   bind_cols(e_mat, e_m_mat)
 }
 
 
-simulate_scenario <- function(ge_var_tot, e_distr, e_icc,
-                              e_var_tot, g_var_tot, gxe_var_tot, nl_e,
+simulate_scenario <- function(sigma2_ge, e_distr, e_icc,
+                              sigma2_e, sigma2_g, sigma2_gxe, nl_e,
                               tag,
                               g_mat, maf_vec,
                               train_prop) {
@@ -64,33 +73,34 @@ simulate_scenario <- function(ge_var_tot, e_distr, e_icc,
                    prob = c(1 - train_prop, train_prop))
   )
   
-  e_df <- simulate_exposure(g_mat, e_distr, ge_var_tot, e_icc)
+  e_df <- simulate_exposure(g_mat, e_distr, sigma2_ge, e_icc)
   e <- e_df$e1
   
-
+  sigma2_g_single <- sigma2_g / M
+  beta_g_var <- sigma2_g_single
+  beta_g_vec <- rnorm(M, 0, sqrt(beta_g_var))
+  y_mean_vec <- g_mat %*% beta_g_vec  # Start with genetic main effects
   
-  g_mat_variances <- 2 * maf_vec * (1 - maf_vec)
-  
-  g_var_single <- g_var_tot / M
-  beta_g_vars <- g_var_single / g_mat_variances
-  beta_g_vec <- rnorm(M, 0, sqrt(beta_g_vars))
-  y_mean_vec <- g_mat %*% beta_g_vec
-  
-  beta_e <- sqrt(e_var_tot)
+  beta_e <- sqrt(sigma2_e)
   if (nl_e & e_distr == "normal") {
-    y_mean_vec <- y_mean_vec + sqrt(e + 10) * (beta_e / sd(sqrt(e + 10)))
+    y_mean_vec <- y_mean_vec + sqrt(e + 10) * (beta_e / sd(sqrt(e + 10)))  # Add exposure main effects
   } else if (nl_e & e_distr == "gamma") {
     y_mean_vec <- y_mean_vec + sqrt(e) * (beta_e / sd(sqrt(e)))
   } else {
     y_mean_vec <- y_mean_vec + e * beta_e
   }
   
-  gxe_var_single <- gxe_var_tot / M
-  beta_gxe_vars <- gxe_var_single / g_mat_variances
-  beta_gxe_vec <- rnorm(M, 0, sqrt(beta_gxe_vars))
-  y_mean_vec <- y_mean_vec + (g_mat * e) %*% beta_gxe_vec
+  mu_e <- mean(e)
+  cov_g_e_single <- sqrt(sigma2_ge / M)  # Distribute G-E variance equally across variants
+  var_ge_single <- 1 + mu_e^2 + cov_g_e_single^2  # Derive variance of G*E term accounting for possible non-centered E or G-E corr.
   
-  error_var <- 1 - e_var_tot - g_var_tot - gxe_var_tot
+  sigma2_gxe_single <- sigma2_gxe / M
+  beta_gxe_var <- sigma2_gxe_single / var_ge_single  # Account for non-unit variance in the case of non-centered E or G-E corr.
+  beta_gxe_vec <- rnorm(M, 0, sqrt(beta_gxe_var))
+  y_mean_vec <- y_mean_vec + (g_mat * e) %*% beta_gxe_vec  # Add GxE effects
+  
+  signal_var <- var(y_mean_vec)  # Use sample variance to avoid mistakes due to complexity of covariance terms
+  error_var <- 1 - signal_var
   y <- rnorm(N, y_mean_vec, sqrt(error_var))
   
   y_df <- tibble(y1 = y)
@@ -208,8 +218,8 @@ test_pgs_by_e <- function(pgs_type, e_name, y_name, df, covars = NULL,
 process_one_rep <- function(scn, rep, g_mat, maf_vec) {
   
   pheno_df <- simulate_scenario(  # Simulate E and Y
-    scn$ge_var_tot, scn$e_distr, scn$e_icc,
-    scn$e_var_tot, scn$g_var_tot, scn$gxe_var_tot, scn$nl_e,
+    scn$sigma2_ge, scn$e_distr, scn$e_icc,
+    scn$sigma2_e, scn$sigma2_g, scn$sigma2_gxe, scn$nl_e,
     scn$tag,
     g_mat, maf_vec,
     train_prop = 0.7

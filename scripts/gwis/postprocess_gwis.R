@@ -89,7 +89,7 @@ ss_df %>%
   ungroup() %>%
   write_tsv(paste0(ldsc_dir, "/", e, "_", y, "_ldscInput"))
 
-if (y == "alt_log") {
+if (y %in% c("alt_log", "hdl")) {
   write_tsv(ss_df, gsub("_merged", "_magma_input", filepath))
 }
 

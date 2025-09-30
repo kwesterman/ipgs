@@ -5,7 +5,7 @@ title: "Outputs for for iPGS comparison manuscript"
 
 ```{r setup, include=F}
 knitr::opts_chunk$set(echo = F, message = F,warning = F, 
-                      dpi = 150, fig.path = "../output/manuscript/")
+                      dpi = 300, fig.path = "../output/manuscript/")
 suppressMessages(silent <- lapply(
   c("knitr", "kableExtra", "tidyverse", "patchwork"), 
   library, character.only = TRUE))
@@ -31,67 +31,63 @@ knitr::include_graphics("../doc/workflow_diagram.pdf")
 # Simulations
 
 ```{r simulation-results}
-t1e_scenario_res_df <- readRDS("../data/processed/manuscript/t1e_scenario_res_df.rds")
-power_scenario_res_df <- readRDS("../data/processed/manuscript/power_scenario_res_df.rds")
+t1e_scenario_df <- read_csv("../data/processed/simulations/t1e_scenarios.csv")
+t1e_res_df <- read_csv("../data/processed/simulations/t1e_res.csv") %>%
+  distinct(tag, pgs_type, .keep_all = TRUE) %>%
+  inner_join(t1e_scenario_df, by = "tag") %>%
+  mutate(pgs_type = factor(pgs_type, 
+                          levels = c("mpgs", "ipgs", "vpgs"),
+                          labels = c("mPGS", "iPGS", "vPGS")))
+
+power_scenario_df <- read_csv("../data/processed/simulations/power_scenarios.csv")
+power_res_df <- read_csv("../data/processed/simulations/power_res.csv") %>%
+  distinct(tag, pgs_type, .keep_all = TRUE) %>%
+  inner_join(power_scenario_df, by = "tag") %>%
+  mutate(pgs_type = factor(pgs_type, 
+                          levels = c("mpgs", "ipgs", "vpgs"),
+                          labels = c("mPGS", "iPGS", "vPGS")))
+
+# t1e_res_df <- readRDS("../data/processed/manuscript/t1e_scenario_res_df.rds")
+# power_scenario_res_df <- readRDS("../data/processed/manuscript/power_scenario_res_df.rds")
 ```
 
 ```{r t1e-plots}
-t1e_normal_plt <- t1e_scenario_res_df %>%
-  filter(e_distr == "normal",
-         ge_var_tot == 0,
-         nl_e == FALSE) %>%
-  mutate(se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
-         l95 = prop_sig - 1.96 * se,
-         u95 = prop_sig + 1.96 * se,
-         col_facet_name = "E: Std. normal") %>%
-  ggplot(aes(x = pgs_type, y = prop_sig, fill = pgs_type)) +
+e_distributions <- c("normal", "gamma", "gamma2")
+e_distributions_clean <- c("Std. normal", "Gamma (\u03BC=1)", "Gamma (\u03BC=2)")
+         
+t1e_base_plt <- t1e_res_df %>%
+  filter(subset == "base") %>%
+  mutate(se = sqrt(f * (1 - f) / n_sim),
+         l95 = f - 1.96 * se,
+         u95 = f + 1.96 * se,
+         e_distr = factor(e_distr, levels = e_distributions, 
+                          labels = paste0("E: ", e_distributions_clean)),
+         main_effects = if_else(sigma2_e == 0 & sigma2_g == 0, "No", "Yes")) %>%
+  ggplot(aes(x = pgs_type, y = f, fill = pgs_type)) +
   geom_bar(stat = "identity") +
   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2, color = "gray") +
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "gray") +
-  facet_grid(rows = vars(e_var_tot),
-             cols = vars(col_facet_name),
+  facet_grid(rows = vars(main_effects),
+             cols = vars(e_distr),
              labeller = label_bquote(
-               rows = "Main effects of E & G: " * .(as.character(e_var_tot))
+               rows = "G & E main effects: " * .(main_effects)
              )) +
   scale_fill_brewer(name = "PGS type", palette = "Set1") +
-  coord_cartesian(ylim = c(0, 0.16)) +
+  coord_cartesian(ylim = c(0, 0.1)) +
   labs(x = "",
        y = "False positive rate") +
   guides(fill = "none")
 
-t1e_gamma_plt <- t1e_scenario_res_df %>%
-  filter(e_distr == "gamma",
-         ge_var_tot == 0,
-         nl_e == FALSE) %>%
-  mutate(se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
-         l95 = prop_sig - 1.96 * se,
-         u95 = prop_sig + 1.96 * se,
-         col_facet_name = "E: Gamma") %>%
-  ggplot(aes(x = pgs_type, y = prop_sig, fill = pgs_type)) +
-  geom_bar(stat = "identity") +
-  geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2, color = "gray") +
-  geom_hline(yintercept = 0.05, linetype = "dashed", color = "gray") +
-  facet_grid(rows = vars(e_var_tot),
-             cols = vars(col_facet_name),
-             labeller = label_bquote(
-               rows = "Main effects of E & G: " * .(as.character(e_var_tot))
-             )) +
-  scale_fill_brewer(name = "PGS type", palette = "Set1") +
-  coord_cartesian(ylim = c(0, 0.16)) +
-  labs(x = "",
-       y = "False positive rate") +
-  guides(fill = "none")
-
-t1e_gamma_ge_nl_plt <- t1e_scenario_res_df %>%
-  filter(e_distr == "gamma",
-         g_var_tot != 0,
-         e_var_tot != 0) %>%
-  mutate(se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
-         l95 = prop_sig - 1.96 * se,
-         u95 = prop_sig + 1.96 * se,
+t1e_ge_nl_plt <- t1e_res_df %>%
+  filter(subset == "ge_nl",
+         sigma2_e == 0.1,
+         sigma2_g == 0.1) %>%
+  mutate(se = sqrt(f * (1 - f) / n_sim),
+         l95 = f - 1.96 * se,
+         u95 = f + 1.96 * se,
          nl_e = factor(nl_e, levels = c(FALSE, TRUE), labels = c("No", "Yes")),
-         ge_corr = ge_var_tot != 0) %>%
-  ggplot(aes(x = pgs_type, y = prop_sig, fill = pgs_type)) +
+         ge_corr = factor((sigma2_ge != 0), levels = c(FALSE, TRUE), labels = c("No", "Yes"))) %>%
+  ggplot(aes(x = pgs_type, y = f, fill = pgs_type)) +
   geom_bar(stat = "identity") +
   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0.2, color = "gray") +
   geom_hline(yintercept = 0.05, linetype = "dashed", color = "gray") +
@@ -101,26 +97,28 @@ t1e_gamma_ge_nl_plt <- t1e_scenario_res_df %>%
                cols = "G-E corr.: " * .(as.character(ge_corr))
              )) +
   scale_fill_brewer(name = "PGS type", palette = "Set1") +
-  coord_cartesian(ylim = c(0, 0.16)) +
+  coord_cartesian(ylim = c(0, 0.1)) +
   labs(x = "",
        y = "False positive rate")
 ```
 
 ```{r power-plots}
-primary_pwr_plt <- power_scenario_res_df %>%
+primary_pwr_plt <- power_res_df %>%
   filter(subset == "base") %>%
-  mutate(se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
-         l95 = prop_sig - 1.96 * se,
-         u95 = prop_sig + 1.96 * se) %>%
-  ggplot(aes(x = gxe_var_tot, y = prop_sig, 
+  mutate(se = sqrt(f * (1 - f) / n_sim),
+         l95 = f - 1.96 * se,
+         u95 = f + 1.96 * se,
+         e_main_effect = if_else(sigma2_e == 0, "No", "Yes"),
+         g_main_effect = if_else(sigma2_g == 0, "No", "Yes")) %>%
+  ggplot(aes(x = sigma2_gxe, y = f, 
              group = pgs_type, color = pgs_type)) +
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0) +
   geom_line() + 
-  facet_grid(rows = vars(e_var_tot), cols = vars(g_var_tot),
+  facet_grid(rows = vars(e_main_effect), cols = vars(g_main_effect),
              labeller = label_bquote(
-               rows = Var["E,tot"] * ": " * .(e_var_tot),
-               cols = Var["G,tot"] * ": " * .(g_var_tot)
+               rows = "E main effect: " * .(e_main_effect),
+               cols = "G main effect: " * .(g_main_effect),
              )) +
   scale_x_continuous(breaks = seq(0, 0.02, 0.01)) +
   scale_color_brewer(name = "PGS type", palette = "Set1") +
@@ -128,12 +126,12 @@ primary_pwr_plt <- power_scenario_res_df %>%
   labs(x = expression(Var["GxE,tot"]),
        y = "Statistical power")
 
-measurement_pwr_plt <- power_scenario_res_df %>%
+measurement_pwr_plt <- power_res_df %>%
   filter(subset == "measurement") %>%
-  mutate(se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
-         l95 = prop_sig - 1.96 * se,
-         u95 = prop_sig + 1.96 * se) %>%
-  ggplot(aes(x = gxe_var_tot, y = prop_sig, 
+  mutate(se = sqrt(f * (1 - f) / n_sim),
+         l95 = f - 1.96 * se,
+         u95 = f + 1.96 * se) %>%
+  ggplot(aes(x = sigma2_gxe, y = f, 
              group = pgs_type, color = pgs_type)) +
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0) +
@@ -148,16 +146,15 @@ measurement_pwr_plt <- power_scenario_res_df %>%
   labs(x = expression(Var["GxE,tot"]),
        y = "Statistical power")
 
-e_distributions <- c("normal", "gamma", "normal10")
-e_distributions_clean <- c("Std. normal", "Gamma", "Normal (\u03BC=10)")
-e_distr_pwr_plt <- power_scenario_res_df %>%
-  filter(subset == "e_distr") %>%
+e_distr_pwr_plt <- power_res_df %>%
+  filter(subset == "e_distr",
+         !grepl("normal[0-9]", e_distr)) %>%
   mutate(e_distr = factor(e_distr, levels = e_distributions, 
                           labels = paste0("E: ", e_distributions_clean)),
-         se = sqrt(prop_sig * (1 - prop_sig) / n_sim),
-         l95 = prop_sig - 1.96 * se,
-         u95 = prop_sig + 1.96 * se) %>%
-  ggplot(aes(x = gxe_var_tot, y = prop_sig, 
+         se = sqrt(f * (1 - f) / n_sim),
+         l95 = f - 1.96 * se,
+         u95 = f + 1.96 * se) %>%
+  ggplot(aes(x = sigma2_gxe, y = f, 
              group = pgs_type, color = pgs_type)) +
   geom_point() +
   geom_errorbar(aes(ymin = l95, ymax = u95), width = 0) +
@@ -170,9 +167,9 @@ e_distr_pwr_plt <- power_scenario_res_df %>%
        y = "Statistical power")
 ```
 
-```{r summary-figure, fig.asp=0.9, fig.width=10}
-t1e_subfig <- (t1e_normal_plt | t1e_gamma_plt | t1e_gamma_ge_nl_plt) +
-  plot_layout(widths = c(2, 2, 3)) +
+```{r simulation-summary-figure, fig.asp=0.9, fig.width=10}
+t1e_subfig <- (t1e_base_plt | t1e_ge_nl_plt) +
+  plot_layout(widths = c(3, 2)) +
   plot_annotation(tag_levels = "a")
 
 alt_power_subfig <- (e_distr_pwr_plt + guides(color = "none")) / 
@@ -558,7 +555,9 @@ all_pgs_int_effect_res_plt <- all_pgs_test_res_df %>%
 all_pgs_test_res_tbl <- all_pgs_test_res_df %>%
   filter(set == "testing") %>%
   arrange(desc(abs(statistic))) %>%
-  mutate(p.value = as.character(signif(p.value, 3))) %>%
+  mutate(estimate = as.character(round(estimate, 4)),
+         statistic = as.character(round(statistic, 3)),
+         p.value = as.character(signif(p.value, 3))) %>%
   select(Biomarker = y, `PGS Type` = pgs_type, 
          `Optimal threshold` = thresh_name, 
          `PGSxBMI estimate` = estimate, `Z-statistic` = statistic, 
@@ -797,7 +796,7 @@ bmiPGS_sensitivity_plt <- sensitivity_test_plt_df %>%
   geom_point() +
   geom_abline(intercept = 0, slope = 1) +
   coord_cartesian(ylim = c(NA, max(sensitivity_test_plt_df$statistic_primary))) +
-  labs(x = "Primary model | z-statistic|", y = "BMI PGS |z-statistic|")
+  labs(x = "Primary model |z-statistic|", y = "BMI PGS |z-statistic|")
 
 layout <- "
 AABB
@@ -898,7 +897,9 @@ aou_pos_ctrl_plt
 ```{r aou-pooled-results}
 aou_pgs_test_res_tbl <- aou_pgs_gxe_res_df %>%
   filter(ancestry == "all") %>%
-  mutate(p.value = as.character(signif(p.value, 3))) %>%
+  mutate(estimate = as.character(round(estimate, 4)),
+         statistic = as.character(round(statistic, 3)),
+         p.value = as.character(signif(p.value, 3))) %>%
   select(Biomarker = y, `PGS Type` = pgs_type, 
          `# variants (UKB score)` = n_variants_ukb,
          `# variants (AoU calculation)` = n_variants_aou,
@@ -974,7 +975,99 @@ aou_pooled_vs_eur_effect_plt <- aou_pgs_gxe_res_df %>%
   labs(x = "", y = "PGSxBMI estimate (95% CI)") +
   theme(axis.text.x = element_text(angle = 35, hjust = 0.9))
 
-(aou_pooled_vs_eur_plt / aou_pooled_vs_eur_effect_plt) +
+# (aou_pooled_vs_eur_plt / aou_pooled_vs_eur_effect_plt) +
+#   plot_annotation(tag_levels = "a")
+```
+
+```{r aou-ancestry-comparison-2, fig.width = 10, fig.asp = 0.8}
+anc_avg_sample_size_df <- aou_pgs_gxe_res_df %>%
+  filter(ancestry != "all") %>%
+  group_by(ancestry) %>%
+  summarize(avg_N = mean(N), .groups = "drop") %>%
+  arrange(desc(avg_N))
+
+aou_anc_dump_plt <- aou_pgs_gxe_res_df %>%
+  filter(ancestry != "all",
+  #        pgs_type == "ipgs") %>% 
+         N > 100) %>%
+  mutate(l95 = estimate - 1.96 * std.error,
+         u95 = estimate + 1.96 * std.error,
+         # ancestry = factor(ancestry, levels = c("all", "eur"),
+         #                   labels = c("Pooled", "EUR")),
+         ancestry = toupper(ancestry),
+         y = factor(y, levels = aou_ordered_N_tbl$y,
+                    labels = aou_outcomes_clean[match(aou_ordered_N_tbl$y, aou_outcomes)]),
+         pgs_type = factor(pgs_type, levels = pgs_types, labels = pgs_types_clean)) %>%
+  ggplot(aes(x = y, y = estimate, color = ancestry)) +
+  geom_hline(yintercept = 0, color = "gray") +
+  geom_point(position = position_dodge(width = 0.6)) +
+  geom_errorbar(aes(ymin = l95, ymax = u95), width = 0,
+                position = position_dodge(width = 0.6)) +
+  scale_color_brewer(name = "Population", palette = "Set2") +
+  scale_shape_discrete(name = "Sample size") +
+  # coord_flip() +
+  coord_cartesian(ylim = c(-0.15, 0.15)) +
+  labs(x = "", y = "PGSxBMI estimate (95% CI)") +
+  facet_wrap(vars(pgs_type), nrow = 3) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 0.9))
+
+aou_pooled_res_df <- aou_pgs_gxe_res_df %>%
+  filter(ancestry == "all") %>%
+  select(y, pgs_type, all_est = estimate)
+anc_cors_df <- aou_pgs_gxe_res_df %>%
+  filter(ancestry != "all",
+         N > 100) %>%
+  left_join(aou_pooled_res_df, by = c("y", "pgs_type")) %>%
+  group_by(pgs_type, ancestry) %>%
+  summarize(
+    r = cor(estimate, all_est, use = "pairwise.complete.obs"),
+    .groups = "drop"
+  )  %>%
+  inner_join(anc_avg_sample_size_df, by = "ancestry") %>%
+  mutate(ancestry = factor(ancestry, levels = anc_avg_sample_size_df$ancestry, 
+                           labels = toupper(anc_avg_sample_size_df$ancestry)),
+         pgs_type = factor(pgs_type, levels = pgs_types, labels = pgs_types_clean))
+
+anc_comparison_hmap <- anc_cors_df %>%
+  ggplot(aes(x = pgs_type, y = fct_rev(ancestry), fill = r)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red",
+    midpoint = 0, name = expression(rho[Anc-to-All])
+  ) +
+  labs(x = NULL,
+       y = NULL)
+
+mean_r <- anc_cors_df %>%
+  group_by(pgs_type) %>%
+  summarize(mean_r = mean(r), .groups = "drop")
+
+anc_mean_bar_plt <- ggplot(mean_r, aes(x = pgs_type, y = mean_r, fill = pgs_type)) +
+  geom_col() +
+  geom_hline(yintercept = 0, color = "gray") +
+  labs(x = NULL, y = expression("Mean(" * rho[Anc-to-All] * ")")) +
+  scale_fill_brewer(name = "PGS type", palette = "Set1") +
+  theme(legend.position = "none")
+
+anc_cors_boxplot <- anc_cors_df %>%
+  ggplot(aes(x = pgs_type, y = r, color = ancestry)) +
+  geom_boxplot(color = "black", outlier.shape = NA) +
+  geom_jitter(width = 0.2) +
+  geom_hline(yintercept = 0, color = "gray") +
+  labs(x = NULL, y = expression(rho[Anc-to-All])) +
+  coord_cartesian(ylim = c(-1, 1.2)) +
+  scale_color_brewer(name = "Population", palette = "Set2") +
+  theme(legend.position = "none")
+
+# aou_anc_dump_plt /
+#   (anc_comparison_hmap | anc_mean_bar_plt) +
+#   plot_layout(heights = c(3, 1)) +
+#   plot_annotation(tag_levels = "a")
+```
+
+```{r aou-ancestry-comparison-figure, fig.width = 10, fig.asp = 0.8}
+aou_anc_dump_plt /
+  (anc_comparison_hmap | aou_pooled_vs_eur_plt) +
+  plot_layout(heights = c(3, 1)) +
   plot_annotation(tag_levels = "a")
 ```
 
@@ -990,7 +1083,8 @@ aou_ukb_comparison_df <- inner_join(
   arrange(p.value_ukb)
 
 aou_ukb_comparison_df %>%
-  mutate(across(contains("p.value"), ~ as.character(signif(.x, 3)))) %>%
+  mutate(across(contains("estimate_"), ~ as.character(round(.x, 4))),
+         across(contains("p.value"), ~ as.character(signif(.x, 3)))) %>%
   select(Biomarker = y, `PGS Type` = pgs_type, 
          PT_threshold = thresh_name,
          `UKB estimate` = estimate_ukb, `UKB P` = p.value_ukb,
@@ -1069,8 +1163,8 @@ aou_rep_subplt <- (aou_ukb_rep_plt_all + labs(subtitle = "All CRFs")) |
   (aou_ukb_rep_plt_gt1000 + labs(subtitle = paste0(N_gt1000, " CRFs with N>1000")))
 
 (aou_effects_subplt /
-    aou_ukb_comparison_plt /
-    aou_rep_subplt) +
+    aou_rep_subplt /
+    aou_ukb_comparison_plt) +
   plot_layout(heights = c(5, 2, 2)) +
   plot_annotation(tag_levels = "a")
 ```
@@ -1265,6 +1359,8 @@ alt_ipgs_annovar_df <- read_tsv("../data/processed/annovar/bmi_alt_log.hg38_mult
 alt_ipgs_annot_df <- inner_join(alt_ipgs_weights_df, alt_ipgs_annovar_df, by = c("CHR", "POS")) %>%
   select(SNP, everything())
 alt_ipgs_annot_df %>%
+  mutate(beta = round(beta, 5),
+         P = signif(P, 4)) %>%
   write_csv("../output/manuscript/alt_ipgs_annot.csv")
 ```
 
@@ -1728,7 +1824,7 @@ aou_ast_rep_plt <- aou_pgs_gxe_res_df %>%
 
 ## Vignette figure
 
-```{r alt-ast-vignette-figure, fig.asp=0.8, fig.width=10}
+```{r alt-vignette-figure, fig.asp=0.8, fig.width=10}
 ukb_alt_smooth_plt <- alt_ast_regression_df %>%
   filter(findInterval(bmi, quantile(bmi, c(0.01, 0.99))) == 1) %>%
   ggplot(aes(x = bmi, y = alt)) +
@@ -1878,4 +1974,77 @@ combined_ast_quantile_effects_plt <- bind_rows(list(
 
 (ukb_aou_alt_smooth_plt | ukb_aou_ast_smooth_plt) /
   (combined_alt_quantile_effects_plt | combined_ast_quantile_effects_plt)
+```
+
+# Vignette: HDL
+
+```{r hdl-magma}
+hdl_gwis_magma_res_df <- read_table("../data/processed/magma/bmi_hdl.gsa.out", 
+                                    skip = 4, show_col_types = FALSE) %>%
+  select(FULL_NAME, BETA, SE, P, NGENES)
+hdl_gwas_magma_res_df <- read_table("../data/processed/magma/hdl.gsa.out", 
+                                    skip = 4, show_col_types = FALSE) %>%
+  select(FULL_NAME, BETA, SE, P, NGENES)
+
+magma_res_df <- bind_rows(list(
+  iGWAS = hdl_gwis_magma_res_df,
+  GWAS = hdl_gwas_magma_res_df
+), .id = "gwas_type") %>%
+  arrange(P)
+
+n_reactome <- length(unique(magma_res_df$FULL_NAME))
+top_igwas_pathways <- magma_res_df %>%
+  filter(grepl("REACTOME_", FULL_NAME),
+         gwas_type == "iGWAS") %>%
+  head(10) %>%
+  pull(FULL_NAME)
+top_gwas_pathways <- magma_res_df %>%
+  filter(grepl("REACTOME_", FULL_NAME),
+         gwas_type == "GWAS") %>%
+  head(10) %>%
+  pull(FULL_NAME)
+
+magma_res_df %>% 
+  filter(FULL_NAME %in% c(top_igwas_pathways, top_gwas_pathways)) %>%
+  mutate(nlp = -log10(P),
+         primary_gwas_type = ifelse(FULL_NAME %in% top_igwas_pathways, "iGWAS", "GWAS"),
+         primary_gwas_type = factor(primary_gwas_type,
+                                    levels = c("iGWAS", "GWAS"),
+                                    labels = paste0("Top ", c("iGWAS", "GWAS"), " pathways")),
+         pwy = gsub("REACTOME_", "", FULL_NAME),
+         pwy = factor(pwy, levels = unique(pwy))) %>%
+  ggplot(aes(x = fct_rev(pwy), y = nlp, fill = gwas_type)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  coord_flip() +
+  facet_wrap(vars(primary_gwas_type), ncol = 1, scales = "free_y") +
+  labs(x = "Reactome pathway",
+       y = expression(paste(-log[10](P[enrichment]))),
+       fill = "GWAS type") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+magma_res_df %>% 
+  filter(FULL_NAME %in% c(top_igwas_pathways, top_gwas_pathways)) %>%
+  arrange(FULL_NAME) %>%
+  kable(caption = "Top enriched pathways from MAGMA") %>%
+  kable_styling(full_width = FALSE)
+
+magma_res_df %>%
+  filter(grepl("REACTOME_", FULL_NAME)) %>%
+  mutate(gene_set = gsub("REACTOME_", "", FULL_NAME)) %>%
+  select(`GWAS type` = gwas_type, `Reactome gene set` = gene_set, BETA, SE, P, `# genes` = NGENES) %>%
+  write_csv("../output/manuscript/hdl_magma_res.csv")
+```
+
+```{r hdl-ipgs-mpgs-overlap}
+hdl_ipgs_weights <- read_tsv("../data/processed/pgs/bmi_hdl_pgs_weights_hg38.txt")
+hdl_mpgs_weights <- read_tsv("../data/processed/pgs/hdl_pgs_weights_hg38.txt")
+
+fuzzyjoin::fuzzy_anti_join(
+  hdl_ipgs_weights, 
+  hdl_mpgs_weights, 
+  by = c("CHR", "POS"), 
+  match_fun = list(`==`, ~ abs(.x - .y) < 100000)
+) %>%
+  kable(caption = "Variants in iPGS that are not within 100kb of an mPGS variant") %>%
+  kable_styling()
 ```
